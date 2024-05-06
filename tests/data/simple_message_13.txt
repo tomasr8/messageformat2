@@ -1,0 +1,8 @@
+PatternMessage(
+    declarations=[],
+    pattern=[
+        "Hello, ",
+        LiteralExpression(arg=Literal(value="escaped | \\ literal"), annotation=None, attributes=[]),
+        "!",
+    ],
+)

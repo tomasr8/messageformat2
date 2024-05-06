@@ -1,0 +1,27 @@
+SelectMessage(
+    declarations=[],
+    selectors=[
+        VariableExpression(
+            arg=VariableRef(name="count"), annotation=FunctionAnnotation(name="integer", options=[]), attributes=[]
+        )
+    ],
+    variants=[
+        Variant(keys=[Literal(value="0")], value=["You have no notifications."]),
+        Variant(
+            keys=[Literal(value="one")],
+            value=[
+                "You have ",
+                VariableExpression(arg=VariableRef(name="count"), annotation=None, attributes=[]),
+                " notification.",
+            ],
+        ),
+        Variant(
+            keys=[CatchallKey(value=None)],
+            value=[
+                "You have ",
+                VariableExpression(arg=VariableRef(name="count"), annotation=None, attributes=[]),
+                " notifications.",
+            ],
+        ),
+    ],
+)

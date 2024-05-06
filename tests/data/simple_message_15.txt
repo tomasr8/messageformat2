@@ -1,0 +1,15 @@
+PatternMessage(
+    declarations=[],
+    pattern=[
+        "Hello, ",
+        Markup(
+            kind="open",
+            name="strong",
+            options=[Option(name="opt", value=Literal(value="42"))],
+            attributes=[Attribute(name="attr", value=None)],
+        ),
+        "John",
+        Markup(kind="close", name="strong", options=[], attributes=[]),
+        "!",
+    ],
+)

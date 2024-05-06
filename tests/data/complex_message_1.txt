@@ -1,0 +1,28 @@
+PatternMessage(
+    declarations=[
+        VariableExpression(
+            arg=VariableRef(name="date"),
+            annotation=FunctionAnnotation(
+                name="datetime",
+                options=[
+                    Option(name="weekday", value=Literal(value="long")),
+                    Option(name="month", value=Literal(value="medium")),
+                    Option(name="day", value=Literal(value="short")),
+                ],
+            ),
+            attributes=[],
+        ),
+        LocalDeclaration(
+            name="numPigs",
+            value=VariableExpression(
+                arg=VariableRef(name="pigs"), annotation=FunctionAnnotation(name="integer", options=[]), attributes=[]
+            ),
+        ),
+    ],
+    pattern=[
+        "On ",
+        VariableExpression(arg=VariableRef(name="date"), annotation=None, attributes=[]),
+        " you had this many pigs: ",
+        VariableExpression(arg=VariableRef(name="numPigs"), annotation=None, attributes=[]),
+    ],
+)

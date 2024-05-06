@@ -1,0 +1,3 @@
+PatternMessage(
+    declarations=[], pattern=[VariableExpression(arg=VariableRef(name="name"), annotation=None, attributes=[])]
+)

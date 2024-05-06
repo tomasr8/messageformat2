@@ -1,0 +1,18 @@
+PatternMessage(
+    declarations=[],
+    pattern=[
+        "Hello, ",
+        VariableExpression(
+            arg=VariableRef(name="name"),
+            annotation=FunctionAnnotation(
+                name="capitalize",
+                options=[
+                    Option(name="arg", value=Literal(value="yes")),
+                    Option(name="opt", value=VariableRef(name="variable")),
+                ],
+            ),
+            attributes=[],
+        ),
+        "!",
+    ],
+)

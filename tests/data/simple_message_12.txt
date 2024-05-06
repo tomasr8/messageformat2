@@ -1,0 +1,10 @@
+PatternMessage(
+    declarations=[],
+    pattern=[
+        "Hello, ",
+        LiteralExpression(
+            arg=Literal(value="quoted"), annotation=FunctionAnnotation(name="capitalize", options=[]), attributes=[]
+        ),
+        "!",
+    ],
+)

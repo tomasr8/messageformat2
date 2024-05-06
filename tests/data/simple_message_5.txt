@@ -1,0 +1,7 @@
+PatternMessage(
+    declarations=[],
+    pattern=[
+        VariableExpression(arg=VariableRef(name="first"), annotation=None, attributes=[]),
+        VariableExpression(arg=VariableRef(name="last"), annotation=None, attributes=[]),
+    ],
+)

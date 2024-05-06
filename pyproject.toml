@@ -1,0 +1,74 @@
+[project]
+name = "messageformat2"
+authors = [{ name = "Tomas Roun", email = "tomas.roun8@gmail.com" }]
+description = "High-level Linear Programming solver using the Simplex algorithm"
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = [
+    "linear programming",
+    "linear programming solver",
+    "lp solver",
+    "lp",
+    "solver",
+    "linprog",
+    "numerical optimization",
+    "convex optimization",
+    "simplex",
+    "simplex algorithm",
+]
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = []
+dynamic = ["version"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-snapshot", "pytest-cov", "ruff", "pre-commit"]
+
+[project.urls]
+Homepage = "https://github.com/tomasr8/pivotal"
+Github = "https://github.com/tomasr8/pivotal"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D",
+    "ANN002",
+    "ANN003",
+    "ANN101",
+    "RET503",
+    "COM812",
+    "ISC001",
+    "N802",
+    "N803",
+    "N806",
+    "N818",
+    "S101",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN001", "ANN201", "PLR2004"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint.isort]
+lines-after-imports = 2
+
+[tool.setuptools]
+packages = ["messageformat2"]
+
+[tool.setuptools.dynamic]
+version = { attr = "messageformat2.__version__" }
+
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"

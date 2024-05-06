@@ -1,0 +1,11 @@
+PatternMessage(
+    declarations=[],
+    pattern=[
+        "Hello, ",
+        FunctionExpression(
+            annotation=FunctionAnnotation(name="namespace:function", options=[]),
+            attributes=[Attribute(name="attr", value=None)],
+        ),
+        "!",
+    ],
+)

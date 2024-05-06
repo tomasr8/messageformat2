@@ -1,0 +1,10 @@
+PatternMessage(
+    declarations=[],
+    pattern=[
+        "Hello, ",
+        LiteralExpression(
+            arg=Literal(value="1.23"), annotation=FunctionAnnotation(name="round", options=[]), attributes=[]
+        ),
+        "!",
+    ],
+)

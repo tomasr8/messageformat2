@@ -1,0 +1,18 @@
+SelectMessage(
+    declarations=[],
+    selectors=[
+        VariableExpression(arg=VariableRef(name="a"), annotation=None, attributes=[]),
+        VariableExpression(arg=VariableRef(name="b"), annotation=None, attributes=[]),
+    ],
+    variants=[
+        Variant(
+            keys=[CatchallKey(value=None), CatchallKey(value=None)],
+            value=[
+                "a = ",
+                VariableExpression(arg=VariableRef(name="a"), annotation=None, attributes=[]),
+                ", b = ",
+                VariableExpression(arg=VariableRef(name="b"), annotation=None, attributes=[]),
+            ],
+        )
+    ],
+)
