@@ -1,0 +1,50 @@
+site_name: MessageFormat2 Docs
+
+theme:
+  name: "material"
+  features:
+    - navigation.tabs
+    - navigation.expand
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      primary: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - scheme: slate
+      primary: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - mkdocstrings
+  - search
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Getting started: getting_started.md
+  - How-To Guides:
+    - Custom formatters: howto/formatter.md
+    - Custom selectors: howto/selector.md
+    - Working with the data model: howto/datamodel.md
+    - Error handling: howto/errors.md
+  - Reference:
+    - message.md
+    - builtins.md
+    - errors.md
+    - datamodel.md
+  - explanation.md
+

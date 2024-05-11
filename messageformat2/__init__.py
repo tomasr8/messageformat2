@@ -1,5 +1,5 @@
-from messageformat2.parse import parse_message
+from messageformat2.message import Message, format_message
 
 
 __version__ = "0.1.0"
-__all__ = ["parse_message"]
+__all__ = ["Message", "format_message"]

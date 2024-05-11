@@ -1,0 +1,4 @@
+PatternMessage(
+    declarations=[],
+    pattern=[UnsupportedExpression(annotation=UnsupportedAnnotation(source="!reserved"), attributes=[])],
+)

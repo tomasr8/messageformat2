@@ -1,8 +1,12 @@
 SelectMessage(
     declarations=[],
     selectors=[
-        VariableExpression(arg=VariableRef(name="a"), annotation=None, attributes=[]),
-        VariableExpression(arg=VariableRef(name="b"), annotation=None, attributes=[]),
+        VariableExpression(
+            arg=VariableRef(name="a"), annotation=FunctionAnnotation(name="integer", options=[]), attributes=[]
+        ),
+        VariableExpression(
+            arg=VariableRef(name="b"), annotation=FunctionAnnotation(name="integer", options=[]), attributes=[]
+        ),
     ],
     variants=[
         Variant(

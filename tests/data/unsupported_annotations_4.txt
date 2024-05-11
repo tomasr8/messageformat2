@@ -1,0 +1,6 @@
+PatternMessage(
+    declarations=[],
+    pattern=[
+        UnsupportedExpression(annotation=UnsupportedAnnotation(source="^private |pipe escape: \\\\| |"), attributes=[])
+    ],
+)

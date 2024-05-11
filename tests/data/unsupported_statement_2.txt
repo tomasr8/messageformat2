@@ -1,0 +1,21 @@
+SelectMessage(
+    declarations=[
+        UnsupportedStatement(
+            keyword="unknown",
+            body=" reserved-body |literal|",
+            expressions=[
+                VariableExpression(
+                    arg=VariableRef(name="x"),
+                    annotation=UnsupportedAnnotation(source="^private"),
+                    attributes=[Attribute(name="attr", value=None)],
+                )
+            ],
+        )
+    ],
+    selectors=[
+        VariableExpression(
+            arg=VariableRef(name="count"), annotation=FunctionAnnotation(name="integer", options=[]), attributes=[]
+        )
+    ],
+    variants=[Variant(keys=[CatchallKey(value=None)], value=["Reserved statement"])],
+)

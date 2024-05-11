@@ -1,16 +1,19 @@
 PatternMessage(
     declarations=[
-        VariableExpression(
-            arg=VariableRef(name="date"),
-            annotation=FunctionAnnotation(
-                name="datetime",
-                options=[
-                    Option(name="weekday", value=Literal(value="long")),
-                    Option(name="month", value=Literal(value="medium")),
-                    Option(name="day", value=Literal(value="short")),
-                ],
+        InputDeclaration(
+            name="date",
+            value=VariableExpression(
+                arg=VariableRef(name="date"),
+                annotation=FunctionAnnotation(
+                    name="datetime",
+                    options=[
+                        Option(name="weekday", value=Literal(value="long")),
+                        Option(name="month", value=Literal(value="medium")),
+                        Option(name="day", value=Literal(value="short")),
+                    ],
+                ),
+                attributes=[],
             ),
-            attributes=[],
         ),
         LocalDeclaration(
             name="numPigs",

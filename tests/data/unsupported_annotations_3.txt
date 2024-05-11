@@ -1,0 +1,3 @@
+PatternMessage(
+    declarations=[], pattern=[UnsupportedExpression(annotation=UnsupportedAnnotation(source="^private"), attributes=[])]
+)

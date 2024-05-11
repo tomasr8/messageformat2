@@ -1,41 +1,53 @@
 [project]
 name = "messageformat2"
 authors = [{ name = "Tomas Roun", email = "tomas.roun8@gmail.com" }]
-description = "High-level Linear Programming solver using the Simplex algorithm"
+description = "Python implementation of Unicode MessageFormat 2.0"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 keywords = [
-    "linear programming",
-    "linear programming solver",
-    "lp solver",
-    "lp",
-    "solver",
-    "linprog",
-    "numerical optimization",
-    "convex optimization",
-    "simplex",
-    "simplex algorithm",
+    "i18n",
+    "internationalization",
+    "localization",
+    "messageformat",
+    "messageformat 2",
+    "cldr",
+    "gettext",
 ]
 license = { file = "LICENSE" }
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering",
-    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Internationalization",
+    "Topic :: Software Development :: Localization",
 ]
-dependencies = []
+dependencies = ["Babel", "click"]
 dynamic = ["version"]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-snapshot", "pytest-cov", "ruff", "pre-commit"]
+dev = [
+    "uv",
+    "pytest",
+    "pytest-snapshot",
+    "pytest-cov",
+    "ruff",
+    "pyright",
+    "mkdocs",
+    "mkdocstrings[python]",
+    "mkdocs-material",
+]
 
 [project.urls]
 Homepage = "https://github.com/tomasr8/pivotal"
 Github = "https://github.com/tomasr8/pivotal"
+
+[project.scripts]
+mf2 = "messageformat2.cli:cli"
+
+[tool.pyright]
+include = ["tests", "messageformat2"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -44,8 +56,11 @@ ignore = [
     "ANN002",
     "ANN003",
     "ANN101",
-    "RET503",
+    "ANN204",
+    "ANN401",
     "COM812",
+    "BLE001",
+    "RET503",
     "ISC001",
     "N802",
     "N803",

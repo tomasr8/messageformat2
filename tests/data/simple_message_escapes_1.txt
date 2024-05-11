@@ -1,0 +1,1 @@
+PatternMessage(declarations=[], pattern=["\\ backslash escape \\"])
