@@ -341,7 +341,7 @@ class DataModelVisitor:
         visitor = getattr(self, method_name, self.generic_visit)
         return visitor(node)
 
-    def generic_visit(self, node: Node) -> None:
+    def generic_visit(self, node: Node) -> Any:
         for name in node.fields:
             if (value := getattr(node, name)) is None:
                 continue
@@ -372,7 +372,7 @@ class DataModelTransformer(DataModelVisitor):
         '{|FOO|}'
     """
 
-    def generic_visit[T](self, node: T) -> T:
+    def generic_visit[T: Node](self, node: T) -> T:
         for name in node.fields:
             old_value = getattr(node, name)
             if old_value is None:
