@@ -38,6 +38,11 @@ dev = [
     "mkdocstrings[python]",
     "mkdocs-material",
 ]
+docs = [
+    "mkdocs",
+    "mkdocstrings[python]",
+    "mkdocs-material",
+]
 
 [project.urls]
 Homepage = "https://github.com/tomasr8/pivotal"
