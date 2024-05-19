@@ -55,7 +55,7 @@ message.format({"name": "Bob"})  # -> "Hello, Bob!"
 
 ### Built-in formatters
 
-There are several builtin locale-aware [formatters](/builtins) available.
+There are several builtin locale-aware formatters available.
 
 ```python
 from datetime import datetime
