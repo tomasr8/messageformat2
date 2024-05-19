@@ -43,8 +43,8 @@ dev = [
 docs = ["mkdocs", "mkdocstrings[python]", "mkdocs-material"]
 
 [project.urls]
-Homepage = "https://github.com/tomasr8/pivotal"
-Github = "https://github.com/tomasr8/pivotal"
+Homepage = "https://github.com/tomasr8/messageformat2"
+Github = "https://github.com/tomasr8/messageformat2"
 
 [project.scripts]
 mf2 = "messageformat2.cli:cli"
