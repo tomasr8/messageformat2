@@ -25,13 +25,3 @@ The `messageformat2` library includes:
 - Message extraction and loading - This will be provided once a format for MF2
   [message resources](https://github.com/eemeli/message-resource-wg) is
   standardized.
-
-## Table Of Contents
-
-1. [Tutorials](tutorials.md)
-2. [How-To Guides](how-to-guides.md)
-3. [Reference](reference.md)
-4. [Explanation](explanation.md)
-
-Quickly find what you're looking for depending on your use case by looking at
-the different pages.
