@@ -11,24 +11,24 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.12", "3.13", "3.14"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Setup Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Install the latest version of uv and set the python version
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install MF2
-        run: pip install .[dev]
+      - name: Lint code 🧹
+        run: |
+          uv run ruff check tests/ messageformat2/ --exclude messageformat2/cli.py
 
-      - name: Lint
-        run: ruff check tests/ messageformat2/ --exclude messageformat2/cli.py
+      - name: Type check 🏷
+        run: |
+          uv run ty check pyjsx/ tests/
 
-      - name: Test
-        run: pytest --doctest-modules
-
-      - name: Static type checking
-        uses: jakebailey/pyright-action@v2
+      - name: Run tests 🧪
+        run: |
+          uv run pytest --no-cov --doctest-modules

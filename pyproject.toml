@@ -35,6 +35,7 @@ dev = [
     "pytest-snapshot",
     "pytest-cov",
     "ruff",
+    "ty",
     "pyright",
     "mkdocs",
     "mkdocstrings[python]",
