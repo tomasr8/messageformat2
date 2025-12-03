@@ -1,5 +1,4 @@
-venv/
-.python-version
+.venv/
 __pycache__/
 .coverage
 htmlcov/
@@ -7,4 +6,3 @@ htmlcov/
 .pytest_cache/
 *.egg-info/
 
-node_modules/
