@@ -24,6 +24,6 @@ pytest --doctest-modules
 ### Code quality
 
 ```sh
-pyright tests/ messageformat2/
+ty tests/ messageformat2/
 ruff check tests/ messageformat2/
 ```
