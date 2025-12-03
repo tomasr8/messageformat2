@@ -23,23 +23,22 @@ classifiers = [
     "Topic :: Software Development :: Internationalization",
     "Topic :: Software Development :: Localization",
 ]
-dependencies = ["Babel", "click"]
+dependencies = ["Babel==2.17.0", "click==8.3.1"]
 dynamic = ["version"]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "uv",
-    "pytest",
-    "pytest-snapshot",
-    "pytest-cov",
-    "ruff",
-    "ty",
-    "pyright",
-    "mkdocs",
-    "mkdocstrings[python]",
-    "mkdocs-material",
+    "pytest==9.0.1",
+    "pytest-snapshot==0.9.0",
+    "pytest-cov==7.0.0",
+    "ruff==0.14.7",
+    "ty==0.0.1a30",
+    "pyright==1.1.407",
+    "mkdocs==1.6.1",
+    "mkdocstrings[python]==1.0.0",
+    "mkdocs-material==9.7.0",
 ]
-docs = ["mkdocs", "mkdocstrings[python]", "mkdocs-material"]
+docs = ["mkdocs==1.6.1", "mkdocstrings[python]==1.0.0", "mkdocs-material==9.7.0"]
 
 [project.urls]
 Homepage = "https://github.com/tomasr8/messageformat2"
