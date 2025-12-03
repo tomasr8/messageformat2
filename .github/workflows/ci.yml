@@ -23,7 +23,7 @@ jobs:
 
       - name: Lint code 🧹
         run: |
-          uv run ruff check tests/ messageformat2/ --exclude messageformat2/cli.py
+          uv run ruff check tests/ messageformat2/
 
       - name: Type check 🏷
         run: |
