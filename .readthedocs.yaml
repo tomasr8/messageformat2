@@ -13,7 +13,7 @@ build:
     post_create_environment:
       - pip install uv
     post_install:
-      - uv sync --group docs
+      - pip install --group docs
 
 mkdocs:
   configuration: mkdocs.yml
