@@ -165,7 +165,7 @@ def sort_variants(pref: list, variants: list[Variant]) -> Pattern:
         minpref = len(matches)
         for s in sortable:
             matchpref = minpref
-            key = s[1].keys[i]
+            key = s[1].keys[i]  # type: ignore[index]
             if not isinstance(key, CatchallKey):
                 assert isinstance(key, Literal)
                 ks = key.value
@@ -173,7 +173,7 @@ def sort_variants(pref: list, variants: list[Variant]) -> Pattern:
             s[0] = matchpref
         sortable.sort(key=lambda x: x[0])
         i = i - 1
-    return sortable[0][1].value
+    return sortable[0][1].value  # type: ignore[index]
 
 
 def resolve_selector(selector: Expression, ctx: FormattingContext) -> Any | LazyValue:

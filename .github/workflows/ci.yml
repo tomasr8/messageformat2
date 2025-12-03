@@ -27,7 +27,7 @@ jobs:
 
       - name: Type check 🏷
         run: |
-          uv run ty check pyjsx/ tests/
+          uv run ty check messageformat2/ tests/
 
       - name: Run tests 🧪
         run: |
