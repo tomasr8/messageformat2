@@ -16,7 +16,7 @@ from messageformat2.parser import parse
 
 
 def ruff_format(source):
-    p = Popen(["ruff", "format", "-"], shell=False, stdin=PIPE, stdout=PIPE, stderr=PIPE)  # noqa: S603, S607
+    p = Popen(["ruff", "format", "-"], shell=False, stdin=PIPE, stdout=PIPE, stderr=PIPE)  # noqa: S607
     output, err = p.communicate(source.encode("utf-8"))
     assert not err
     return output

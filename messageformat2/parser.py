@@ -165,7 +165,7 @@ def parse_simple_message(queue: Queue) -> PatternMessage:
     y = pattern[0]
     match (x, y):
         case (str(), str()):
-            pattern = simple_start[:-1] + [x + y] + pattern[1:]
+            pattern = [*simple_start[:-1], x + y, *pattern[1:]]
             return PatternMessage(declarations=[], pattern=pattern)
         case _:
             return PatternMessage(declarations=[], pattern=simple_start + pattern)

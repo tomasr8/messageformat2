@@ -150,7 +150,7 @@ def integer_selector(value: Any, locale: Locale, options: dict[str, Any], keys: 
     return exact_keys + keyword_keys
 
 
-def format_datetime(  # noqa: PLR0915, PLR0913, PLR0912, C901
+def format_datetime(  # noqa: PLR0915, PLR0913
     dt: _datetime.datetime,
     locale: Locale,
     dateStyle: Literal["full", "long", "medium", "short"] | None = None,
