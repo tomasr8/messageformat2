@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Software Development :: Internationalization",
     "Topic :: Software Development :: Localization",
 ]
-dependencies = ["Babel==2.17.0", "click==8.3.1"]
+dependencies = ["Babel==2.18.0", "click==8.3.1"]
 dynamic = ["version"]
 
 [dependency-groups]
@@ -33,7 +33,7 @@ dev = [
     "pytest-snapshot==0.9.0",
     "pytest-cov==7.0.0",
     "ruff==0.14.14",
-    "ty==0.0.13",
+    "ty==0.0.14",
     "mkdocs==1.6.1",
     "mkdocstrings[python]==1.0.2",
     "mkdocs-material==9.7.1",
