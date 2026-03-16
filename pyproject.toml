@@ -32,13 +32,13 @@ dev = [
     "pytest==9.0.2",
     "pytest-snapshot==0.9.0",
     "pytest-cov==7.0.0",
-    "ruff==0.15.4",
-    "ty==0.0.19",
+    "ruff==0.15.5",
+    "ty==0.0.21",
     "mkdocs==1.6.1",
     "mkdocstrings[python]==1.0.3",
-    "mkdocs-material==9.7.3",
+    "mkdocs-material==9.7.4",
 ]
-docs = ["mkdocs==1.6.1", "mkdocstrings[python]==1.0.3", "mkdocs-material==9.7.3"]
+docs = ["mkdocs==1.6.1", "mkdocstrings[python]==1.0.3", "mkdocs-material==9.7.4"]
 
 [project.urls]
 Homepage = "https://github.com/tomasr8/messageformat2"
