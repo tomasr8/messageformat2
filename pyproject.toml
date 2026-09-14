@@ -57,6 +57,7 @@ ignore = [
     "ANN401",
     "COM812",
     "C901",
+    "CPY001",  # Copyright is documented in LICENSE.
     "BLE001",
     "RET503",
     "ISC001",
