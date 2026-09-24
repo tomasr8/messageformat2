@@ -20,10 +20,7 @@ def format_skeleton(
     locale = Locale.parse(locale)
     matched = skeleton
     if skeleton not in locale.datetime_skeletons:
-        matched = match_skeleton(
-            skeleton,
-            locale.datetime_skeletons,
-            allow_different_fields=True)
+        matched = match_skeleton(skeleton, locale.datetime_skeletons, allow_different_fields=True)
     fmt = locale.datetime_skeletons[matched]
     return _format_datetime(dt, format=fmt, locale=locale)
 
