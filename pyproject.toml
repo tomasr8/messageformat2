@@ -32,8 +32,8 @@ dev = [
     "pytest==9.1.1",
     "pytest-snapshot==0.9.0",
     "pytest-cov==7.1.0",
-    "ruff==0.16.6",
-    "ty==0.0.78",
+    "ruff==0.16.8",
+    "ty==0.0.82",
     "mkdocs==1.6.1",
     "mkdocstrings[python]==1.0.6",
     "mkdocs-material==9.7.7",
@@ -85,5 +85,5 @@ packages = ["messageformat2"]
 path = "messageformat2/__init__.py"
 
 [build-system]
-requires = ["hatchling==1.32.0"]
+requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
