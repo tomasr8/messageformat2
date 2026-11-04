@@ -33,7 +33,7 @@ _name_start = (
     "^"
     "[a-zA-Z_"
     "\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u02ff"
-    "\u0370-\u037d\u037f-\u1fff\u200c-\u200d"
+    "\u0370-\u037d\u037f-\u061b\u061d-\u1fff\u200c-\u200d"  # U+061C ALM is a bidi mark, not a name character
     "\u2070-\u218f\u2c00-\u2fef\u3001-\ud7ff"
     "\uf900-\ufdcf\ufdf0-\ufffd\U00010000-\U000effff]"
 )
@@ -42,8 +42,15 @@ name_char = re.compile(rf"{_name_start}|[0-9-.\u00B7\u0300-\u036F\u203F-\u2040]"
 
 number_literal = re.compile(r"^-?(?:(?:0|[1-9])\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
 
-_whitespace = r"[\s\u3000]"
+# ws   = SP / HTAB / CR / LF / %x3000
+# bidi = %x061C / %x200E / %x200F / %x2066-2069  (ALM, LRM, RLM, LRI, RLI, FSI, PDI)
+# o    = *(ws / bidi)      ; optional whitespace
+# s    = *bidi ws o        ; required whitespace
+_whitespace = "[ \t\r\n\u3000]"
+_bidi = "[\u061c\u200e\u200f\u2066-\u2069]"
 whitespace = re.compile(f"^{_whitespace}")
+bidi = re.compile(f"^{_bidi}")
+optional_whitespace_char = re.compile(f"^(?:{_whitespace}|{_bidi})")
 
 # escaped-char = backslash ( backslash / "{" / "|" / "}" )
 # The same escapes are valid in text and in quoted literals.
@@ -51,21 +58,22 @@ escaped_char = re.compile(r"^\\[\\{|}]")
 _reserved_escape = r"^\\[\\{|}]"
 reserved_escape = re.compile(f"^{_reserved_escape}")
 
-_content_char = (
-    "[\u0001-\u0008]|[\u000b-\u000c]|[\u000e-\u001f]|"
-    "[\u0021-\\\u002d]|"  # \u002d is '-' so needs to be escaped
-    "[\u002f-\u003f]|[\u0041-\u005b]|"
-    "[\u005d-\u007a]|[\u007e-\u2fff]|[\u3001-\ud7ff]|[\ue000-\U0010ffff]"
+# simple-start-char: text-char except whitespace and "."
+# (the escapes are left to `re` so that U+002D is a literal "-" rather than a range operator)
+simple_start_char = re.compile(
+    r"^[\u0001-\u0008\u000b-\u000c\u000e-\u001f\u0021-\u002d\u002f-\u005b\u005d-\u007a\u007c\u007e-\u2fff\u3001-\U0010ffff]"
 )
-content_char = re.compile(f"^{_content_char}")
-
-simple_start_char = re.compile(rf"^{_content_char}|[@|]")
-text_char = re.compile(rf"^{_content_char}|{_whitespace}|[.@|]")
-quoted_char = re.compile(rf"^{_content_char}|{_whitespace}|[.@{{}}]")
-_reserved_char = rf"{_content_char}|[.]"
+# text-char: any code point except NULL, "\", "{" and "}"
+text_char = re.compile(r"^[\u0001-\u005b\u005d-\u007a\u007c\u007e-\U0010ffff]")
+# quoted-char: any code point except NULL, "\" and "|"
+quoted_char = re.compile(r"^[\u0001-\u005b\u005d-\u007b\u007d-\U0010ffff]")
+# reserved-char: any code point except NULL, whitespace, "@", "\", "{", "|" and "}"
+_reserved_char = (
+    r"[\u0001-\u0008\u000b-\u000c\u000e-\u001f\u0021-\u003f\u0041-\u005b\u005d-\u007a\u007e-\u2fff\u3001-\U0010ffff]"
+)
 reserved_char = re.compile(rf"^{_reserved_char}")
 
-markup_start = re.compile(rf"{{{_whitespace}?[#/]")
+markup_start = re.compile(rf"^\{{(?:{_whitespace}|{_bidi})*[#/]")
 annotation_start = re.compile(r"^[:^&!%*+<>?~]")
 input_start = re.compile(r"^\.input")
 local_start = re.compile(r"^\.local")
@@ -100,10 +108,10 @@ class Queue:
         return None
 
     def peek_after_whitespace(self) -> str | None:
-        if self.queue:
-            i = 0
-            while i < len(self.queue) and whitespace.match(self.queue[i]):
-                i += 1
+        i = 0
+        while i < len(self.queue) and optional_whitespace_char.match(self.queue[i]):
+            i += 1
+        if i < len(self.queue):
             return self.queue[i]
         return None
 
@@ -115,7 +123,7 @@ class Queue:
     def matches_after_whitespace(self, pattern: re.Pattern) -> bool:
         if self.queue:
             i = 0
-            while i < len(self.queue) and whitespace.match(self.queue[i]):
+            while i < len(self.queue) and optional_whitespace_char.match(self.queue[i]):
                 i += 1
             return bool(pattern.match(self.queue[i:]))
         return False
@@ -396,6 +404,10 @@ def parse_namespace(queue: Queue) -> str:
 
 
 def parse_name(queue: Queue) -> str:
+    # name = [bidi] name-start *name-char [bidi]
+    # The surrounding bidi marks are not part of the name.
+    if queue.matches(bidi):
+        queue.pop()
     if not queue.matches(name_start):
         msg = f"Invalid name start: {queue.peek()}"
         raise ParseError(msg)
@@ -403,6 +415,8 @@ def parse_name(queue: Queue) -> str:
 
     while queue.matches(name_char):
         name += queue.pop()
+    if queue.matches(bidi):
+        queue.pop()
     return name
 
 
@@ -535,14 +549,19 @@ def parse_unquoted_literal(queue: Queue) -> Literal:
 
 
 def parse_whitespace(queue: Queue) -> str:
+    # s = *bidi ws o
+    ws = ""
+    while queue.matches(bidi):
+        ws += queue.pop()
     if not queue.matches(whitespace):
         msg = f"Expected whitespace: {queue.peek()}"
         raise ParseError(msg)
-    return parse_optional_whitespace(queue)
+    return ws + parse_optional_whitespace(queue)
 
 
 def parse_optional_whitespace(queue: Queue) -> str:
+    # optional whitespace: o = *(ws / bidi)
     ws = ""
-    while queue.matches(whitespace):
+    while queue.matches(optional_whitespace_char):
         ws += queue.pop()
     return ws

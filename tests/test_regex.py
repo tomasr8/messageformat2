@@ -1,5 +1,4 @@
 from messageformat2.parser import (
-    content_char,
     escaped_char,
     markup_start,
     quoted_char,
@@ -31,36 +30,6 @@ def test_reserved_escape():
     assert reserved_escape.match(r"\{") is not None
     assert reserved_escape.match(r"\|") is not None
     assert reserved_escape.match(r"\}") is not None
-
-
-def test_content_char():
-    chars = [
-        "\u0001",
-        "\u0008",
-        "\u000b",
-        "\u000c",
-        "\u000e",
-        "\u001f",
-        "\u0021",
-        "\u002d",
-        "\u002f",
-        "\u003f",
-        "\u0041",
-        "\u005b",
-        "\u005d",
-        "\u007a",
-        "\u007e",
-        "\u2fff",
-        "\u3001",
-        "\ud7ff",
-        "\ue000",
-        "\U0010ffff",
-        "a",
-        "b",
-        "H",
-    ]
-    for c in chars:
-        assert content_char.match(c) is not None
 
 
 def test_simple_start_char():

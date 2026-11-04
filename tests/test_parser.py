@@ -4,6 +4,14 @@ from subprocess import PIPE, Popen
 
 import pytest
 
+from messageformat2.datamodel import (
+    Literal,
+    LiteralExpression,
+    LocalDeclaration,
+    PatternMessage,
+    VariableExpression,
+    VariableRef,
+)
 from messageformat2.errors import (
     DuplicateDeclaration,
     DuplicateOptionName,
@@ -233,5 +241,57 @@ def test_data_model_errors(message, error):
     ],
 )
 def test_parse_errors(message):
+    with pytest.raises(ParseError):
+        parse(message)
+
+
+@pytest.mark.parametrize("ws", [" ", "\t", "\r", "\n", "\u3000"])
+def test_whitespace(ws):
+    ast = parse(f"{{{ws}foo{ws}}}")
+    assert isinstance(ast, PatternMessage)
+    assert ast.pattern == [LiteralExpression(arg=Literal(value="foo"), annotation=None, attributes=[])]
+
+
+@pytest.mark.parametrize("ws", ["\u00a0", "\u000b", "\u000c", "\u2028"])
+def test_invalid_whitespace(ws):
+    with pytest.raises(ParseError):
+        parse(f"{{{ws}foo{ws}}}")
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "\u200e .local $x = {1} {{ {$x}}}",
+        ".local $x = {1} \u200f {{ {$x}}}",
+        ".local $x = {1} {{ {$x}}} \u2066",
+        ".local \u2067 $x = {1} {{ {$x}}}",
+        ".local\u2067 $x = {1} {{ {$x}}}",
+        ".local $x \u2068 = \u2069 {1} {{ {$x}}}",
+        ".local $x = {\u200e 1 \u200f} {{ {$x}}}",
+        ".local $x = {1 \u200e :string \u200f} {{ {$x}}}",
+        ".local $x = {1 :string opt\u200f=\u200e1 @attr\u200f=\u200e1 } {{ {$x}}}",
+        ".local $\u061cx = {1} {{ {$\u061cx}}}",
+        ".local $\u200ex\u200f = {1} {{ {$x}}}",
+        ".local $x = {1} {{ {$\u200ex\u200f}}}",
+    ],
+)
+def test_bidi_marks_are_allowed_in_whitespace_and_around_names(message):
+    ast = parse(message)
+    assert isinstance(ast, PatternMessage)
+    assert len(ast.declarations) == 1
+    assert isinstance(ast.declarations[0], LocalDeclaration)
+    assert ast.declarations[0].name == "x"
+    assert ast.pattern == [" ", VariableExpression(arg=VariableRef(name="x"), annotation=None, attributes=[])]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        ".local $foo\u061cbar = {2} {{ }}",
+        ".local $foo\u200ebar = {5} {{{$foo\u200ebar}}}",
+        ".local $x = {1 :string} .match $x\u061c1 {{one}} * {{other}}",
+    ],
+)
+def test_bidi_marks_are_not_allowed_inside_names(message):
     with pytest.raises(ParseError):
         parse(message)
