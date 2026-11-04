@@ -36,16 +36,21 @@ format_message(
 ```
 
 Any errors during the evaluation of the formatter will be automatically caught
-and `messageformat2.errors.InvalidExpression` will be reraised instead.
+and `messageformat2.errors.MessageFunctionError` will be reraised instead.
 
 ```python
-from messageformat2.errors import InvalidExpression
+from messageformat2.errors import MessageFunctionError
 
 try:
     format_message(
         "{foo :raise}",
         formatters={"raise": raise_some_error}
     )
-except InvalidExpression as e:
+except MessageFunctionError as e:
     print(e)
 ```
+
+To signal a specific error, a formatter can raise one of the `MessageFunctionError` subclasses
+defined by the spec: `BadOperand` (wrong operand type or format), `BadOption` (invalid option or
+option value), `BadVariantKey` (a variant key the selector cannot interpret) or `UnsupportedOperation`.
+These are reraised as-is.

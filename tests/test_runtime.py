@@ -1,14 +1,20 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from babel import Locale
 
 from messageformat2 import Message
 from messageformat2.errors import (
-    OperandMismatch,
+    BadOption,
+    BadSelector,
+    MessageFunctionError,
     ParseError,
     UnknownFunction,
 )
+
+
+if TYPE_CHECKING:
+    from messageformat2.builtins import Formatter
 
 
 def date(value, locale, options) -> str:  # noqa: ARG001
@@ -41,7 +47,7 @@ def integer_selector(value: Any, locale: Locale, options: dict[str, Any], keys: 
 def string_formatter_mutually_exclusive(value: Any, locale: Locale, options: dict[str, Any]):  # noqa: ARG001
     if options.get("foo") and options.get("bar"):
         msg = "foo and bar are mutually exclusive"
-        raise OperandMismatch(msg)
+        raise BadOption(msg)
     return str(value)
 
 
@@ -259,12 +265,25 @@ def test_simple_message_cannot_start_with_period(message):
     [
         ("{:unknown}", None, UnknownFunction),
         ("{|dog| :unknown cute=yes}", None, UnknownFunction),
-        ("{|dog| :string foo=1 bar=2}", None, OperandMismatch),
+        ("{|dog| :string foo=1 bar=2}", None, BadOption),
+        ("{|dog| :raise}", None, MessageFunctionError),
+        # selecting on a function which only supports formatting
+        (".local $x = {42 :format-only} .match $x * {{foo}}", None, BadSelector),
+        (".local $x = {42 :unknown} .match $x * {{foo}}", None, UnknownFunction),
     ],
 )
 def test_errors(message, inputs, error):
+    def raise_some_error(value, locale, options) -> str:  # noqa: ARG001
+        msg = "boom"
+        raise RuntimeError(msg)
+
+    formatters: dict[str, Formatter] = {
+        "string": string_formatter_mutually_exclusive,
+        "raise": raise_some_error,
+        "format-only": date,
+    }
     with pytest.raises(error):
-        Message(message).format(inputs, formatters={"string": string_formatter_mutually_exclusive})
+        Message(message).format(inputs, formatters=formatters)
 
 
 def test_input_names_are_nfc_normalized():

@@ -6,8 +6,9 @@ from babel import Locale
 
 from messageformat2.builtins import Registry
 from messageformat2.errors import (
-    InvalidExpression,
-    SelectionError,
+    BadOperand,
+    BadSelector,
+    MessageFunctionError,
     UnknownFunction,
     UnresolvedVariable,
 )
@@ -47,14 +48,17 @@ class LazyValue:
         self.options = options or {}
 
     def format(self, ctx: FormattingContext) -> str:
-        if annotation := ctx.registry.formatters.get(self.fn_name):
+        if formatter := ctx.registry.formatters.get(self.fn_name):
             try:
-                return str(annotation(value=self.value, locale=ctx.locale, options=self.options))
-            except InvalidExpression:
+                return str(formatter(value=self.value, locale=ctx.locale, options=self.options))
+            except MessageFunctionError:
                 raise
             except Exception as e:
-                msg = "Exception raised while evaluating formatter"
-                raise InvalidExpression(msg) from e
+                msg = f"Exception raised while evaluating formatter :{self.fn_name}"
+                raise MessageFunctionError(msg) from e
+        if self.fn_name in ctx.registry.selectors:
+            msg = f"Function :{self.fn_name} does not support formatting"
+            raise MessageFunctionError(msg)
         msg = f"Unknown function: {self.fn_name}"
         raise UnknownFunction(msg)
 
@@ -62,12 +66,15 @@ class LazyValue:
         if selector := ctx.registry.selectors.get(self.fn_name):
             try:
                 return selector(value=self.value, locale=ctx.locale, options=self.options, keys=keys)
-            except SelectionError:
+            except MessageFunctionError:
                 raise
             except Exception as e:
-                msg = "Exception raised while evaluating selector"
-                raise SelectionError(msg) from e
-        msg = f"Unknown selector: {self.fn_name}"
+                msg = f"Exception raised while evaluating selector :{self.fn_name}"
+                raise BadSelector(msg) from e
+        if self.fn_name in ctx.registry.formatters:
+            msg = f"Bad selector: function :{self.fn_name} does not support selection"
+            raise BadSelector(msg)
+        msg = f"Unknown function: {self.fn_name}"
         raise UnknownFunction(msg)
 
     def __repr__(self):
@@ -164,7 +171,7 @@ def resolve_selector(selector: VariableRef, ctx: FormattingContext) -> LazyValue
     resolved = resolve_variable(selector.name, ctx)
     if not isinstance(resolved, LazyValue):
         msg = f"Bad selector: ${selector.name} does not support selection"
-        raise SelectionError(msg)
+        raise BadSelector(msg)
     return resolved
 
 
@@ -230,8 +237,8 @@ def resolve_expression(expression: Expression, ctx: FormattingContext) -> Any | 
             match resolved:
                 case LazyValue(fn_name=lazy_function, value=lazy_value, options=lazy_options):
                     if lazy_function and lazy_function != name:
-                        msg = f"Function mismatch: {lazy_function} != {name}"
-                        raise ValueError(msg)
+                        msg = f"Bad operand: ${ref} is annotated with :{lazy_function}, cannot apply :{name}"
+                        raise BadOperand(msg)
                     return LazyValue(fn_name=name, value=lazy_value, options=(lazy_options or {}) | options)
                 case _:
                     return LazyValue(fn_name=name, value=resolved, options=options)
@@ -253,8 +260,8 @@ def resolve_variable(name: str, ctx: FormattingContext) -> Any:
                 match resolved:
                     case LazyValue(fn_name=lazy_fn_name, value=lazy_value, options=lazy_options):
                         if lazy_fn_name and lazy_fn_name != fn_name:
-                            msg = f"Function mismatch: {lazy_fn_name} != {fn_name}"
-                            raise ValueError(msg)
+                            msg = f"Bad operand: ${name} is annotated with :{lazy_fn_name}, cannot apply :{fn_name}"
+                            raise BadOperand(msg)
                         return LazyValue(fn_name=fn_name, value=lazy_value, options=(lazy_options or {}) | options)
                     case _:
                         return LazyValue(fn_name=fn_name, value=resolved, options=options)

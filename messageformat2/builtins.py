@@ -9,7 +9,7 @@ from babel.dates import format_time as _format_time
 from babel.dates import match_skeleton
 from babel.numbers import format_compact_decimal, format_decimal, format_percent, format_scientific
 
-from messageformat2.errors import InvalidExpression
+from messageformat2.errors import BadOption
 
 
 def format_skeleton(
@@ -84,7 +84,7 @@ def keyword_selector(
         keyword = locale.ordinal_form(number)
     else:
         msg = f"Unknown select type: {select}"
-        raise InvalidExpression(msg)
+        raise BadOption(msg)
 
     return [keyword] if keyword in keys else []
 
@@ -129,7 +129,7 @@ def format_integer(  # noqa: PLR0913
             numbering_system=numberingSystem,
         )
     msg = f"Unknown style: {style}"
-    raise InvalidExpression(msg)
+    raise BadOption(msg)
 
 
 def integer_formatter(value: Any, locale: Locale, options: dict[str, Any]) -> str:  # noqa: ARG001

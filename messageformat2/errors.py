@@ -129,13 +129,43 @@ class UnknownFunction(ResolutionError):
     """
 
 
-class InvalidExpression(ResolutionError):
-    pass
+class BadSelector(ResolutionError):
+    """Raised when a selector resolves to a value which does not support selection.
+
+    Examples:
+        >>> from messageformat2 import Message
+        >>> Message(".local $day = {|2024-05-01| :date} .match $day * {{Due {$day}}}").format() # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        messageformat2.errors.BadSelector: ...
+    """
 
 
-class OperandMismatch(InvalidExpression):
-    pass
+class MessageFunctionError(FormatError):
+    """Base class for errors raised by (or on behalf of) a function handler.
+
+    Any other exception raised by a custom formatter or selector is wrapped in this error.
+    Custom functions can raise one of the subclasses below to signal a specific error.
+    """
 
 
-class SelectionError(FormatError):
-    """Raised when message selection fails."""
+class BadOperand(MessageFunctionError):
+    """Raised when the operand of a function has the wrong type or format."""
+
+
+class BadOption(MessageFunctionError):
+    """Raised when an option or option value is invalid for a function."""
+
+
+class BadVariantKey(MessageFunctionError):
+    """Raised when a variant key does not match the format expected by the selector function."""
+
+
+class UnsupportedOperation(MessageFunctionError):
+    """Raised when a combination of operand, options or option values is not supported by a function."""
+
+
+# Backwards-compatible aliases for the pre-spec error names
+InvalidExpression = MessageFunctionError
+OperandMismatch = BadOperand
+SelectionError = BadSelector
