@@ -1,4 +1,5 @@
 import datetime as _datetime
+import unicodedata
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
@@ -9,7 +10,7 @@ from babel.dates import format_time as _format_time
 from babel.dates import match_skeleton
 from babel.numbers import format_compact_decimal, format_decimal, format_percent, format_scientific
 
-from messageformat2.errors import BadOption, BadSelector, MessageFunctionError, UnknownFunction
+from messageformat2.errors import BadOperand, BadOption, BadSelector, MessageFunctionError, UnknownFunction
 
 
 if TYPE_CHECKING:
@@ -114,11 +115,15 @@ def xml_markup(kind: Literal["open", "standalone", "close"], name: str, options:
 
 
 def string_formatter(value: Any, locale: Locale, options: dict[str, Any]) -> str:  # noqa: ARG001
+    if value is None:
+        msg = ":string requires an operand"
+        raise BadOperand(msg)
     return str(value)
 
 
 def string_selector(value: Any, locale: Locale, options: dict[str, Any], keys: list[str]) -> list[str]:
-    string = string_formatter(value, locale=locale, options=options)
+    # The string value is compared to the keys in NFC (the keys are already normalized)
+    string = unicodedata.normalize("NFC", string_formatter(value, locale=locale, options=options))
     return [string] if string in keys else []
 
 
