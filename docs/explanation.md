@@ -5,18 +5,20 @@ If the same variable is referenced more than once, it will also be evaluated mor
 Pay attention when providing custom formatters/selectors with side effects:
 
 ```python
+from messageformat2 import Message
+
 counter = 0
 
 def formatter_with_side_effect(value, locale, options):
-    nonlocal counter
-    counter +=1
+    global counter
+    counter += 1
     return str(value)
 
-msg = Message("\
+msg = Message("""\
 .local $foo = {|foo| :side_effect}
 {{{$foo} {$foo}}}
-")
-msg.format(formatters={'side_effect': formatter_with_side_effect})
+""")
+msg.format(formatters={"side_effect": formatter_with_side_effect})
 print(counter)  # -> 2
 ```
 
@@ -36,11 +38,12 @@ and decides what to do with it. The built-in numeric functions accept each other
 and inherit their options, with the options of the later expression taking priority:
 
 ```python
-.local $x = {42 :number minimumFractionDigits=2 signDisplay=always}
-{{x = {$x :number minimumFractionDigits=1}}}  # -> "x = +42.0"
+from messageformat2 import format_message
 
-.local $x = {1.25 :integer}
-{{x = {$x :number}}}  # -> "x = 1"
+format_message(".local $x = {42 :number minimumFractionDigits=2 signDisplay=always} {{x = {$x :number minimumFractionDigits=1}}}")
+# -> "x = +42.0"
+format_message(".local $x = {1.25 :integer} {{x = {$x :number}}}")
+# -> "x = 1"
 ```
 
 whereas e.g. `{$x :date}` would raise `BadOperand`. See [Custom formatters](howto/formatter.md) for how to
@@ -54,6 +57,8 @@ Whitespace around a complex message (a message containing declarations and/or a 
 so complex messages can be freely indented, e.g. in multiline strings:
 
 ```python
+from messageformat2 import Message
+
 Message("""
     .input {$count :integer}
     .match $count

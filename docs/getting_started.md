@@ -26,18 +26,18 @@ message.format({"name": "Bob"})  # -> "Hello, Bob!"
 
 ## Built-in formatters
 
-There are several builtin locale-aware [formatters](/builtins) available.
+There are several builtin locale-aware [formatters](builtins.md) available.
 
 ```python
-from datetime import datetime
+from datetime import date
 from messageformat2 import Message
 
-message = Message("Today's date is {$now :date}")
-now = datetime.now()
-message.format({"now": now}, locale='en_US')
-# -> Today's date is 5/10/2024
-message.format({"now": now}, locale='en_GB')
-# -> Today's date is 10/05/2024
+message = Message("Today's date is {$today :date}")
+today = date(2024, 5, 10)
+message.format({"today": today}, locale="en_US")
+# -> "Today's date is May 10, 2024"
+message.format({"today": today}, locale="en_GB")
+# -> "Today's date is 10 May 2024"
 ```
 
 ## Plural support

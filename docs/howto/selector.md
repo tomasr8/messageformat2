@@ -4,23 +4,27 @@ statement.
 Here's a simple implementation of the `:integer` selector:
 
 ```python
+from typing import Any
+
+from babel import Locale
+
+from messageformat2 import format_message
+
+
 def integer_selector(
     value: Any,  # The value passed to the selector while formatting the message
-    *,
     locale: Locale,  # Babel locale
     options: dict[str, Any],  # Selector options
-    keys: list[str]  # Variant keys to be filtered out
+    keys: list[str],  # Variant keys to be filtered out
 ) -> list[str]:
+    value = int(value)
     select = options.get("select", "plural")
 
-    exact_keys = [value] if value in keys else []
+    exact_keys = [key for key in keys if key == str(value)]
     if select == "exact":
         return exact_keys
-    if select == "plural":
-        form = locale.plural_form(value)
-    if select == "ordinal":
-        form = locale.ordinal_form(value)
-    return exact_keys + keyword_keys
+    form = locale.ordinal_form(value) if select == "ordinal" else locale.plural_form(value)
+    return exact_keys + [key for key in keys if key == form]
 
 
 format_message("""\
@@ -32,19 +36,19 @@ one {{You have {$count} notification.}}
     {"count": 1},
     selectors={"integer": integer_selector}
 )
-# -> You have one notification.
+# -> "You have one notification."
 ```
 
-A selector function must take exactly 3 arguments:
+A selector function must take exactly 4 arguments, which are passed by keyword (so they must have these names):
 
-- `value`: the value passed to the formatter when formatting
+- `value`: the value passed to the selector when formatting
 - `locale`: the current locale as a `babel.Locale` instance
-- `options`: a dictionary containing all the options passed to the formatter.
-- `keys`: The key from each variant of the match statement.
+- `options`: a dictionary containing all the options passed to the selector
+- `keys`: the key from each variant of the match statement (the catch-all `*` is not included)
 
 For example, for this message:
 
-```python
+```
 .input {$count :integer select=plural}
 .match $count
 1   {{You have one notification.}}

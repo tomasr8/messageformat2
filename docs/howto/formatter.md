@@ -2,6 +2,9 @@ It is possible to write a custom formatter to extend the functionality of the
 library. Here's an example of a simple formatter:
 
 ```python
+from typing import Any
+from messageformat2 import format_message
+
 def capitalize(value: Any, locale, options) -> str:
     return value.capitalize()
 
@@ -41,13 +44,17 @@ and `messageformat2.errors.MessageFunctionError` will be reraised instead.
 ```python
 from messageformat2.errors import MessageFunctionError
 
+def raise_some_error(value, locale, options) -> str:
+    raise ValueError("something went wrong")
+
 try:
     format_message(
         "{foo :raise}",
         formatters={"raise": raise_some_error}
     )
 except MessageFunctionError as e:
-    print(e)
+    print(e)  # -> Exception raised while evaluating formatter :raise
+    print(repr(e.__cause__))  # -> ValueError('something went wrong')
 ```
 
 To signal a specific error, a formatter can raise one of the `MessageFunctionError` subclasses

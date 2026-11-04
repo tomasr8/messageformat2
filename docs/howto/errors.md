@@ -22,7 +22,7 @@ from messageformat2.errors import ParseError, DataModelError
 try:
     Message("}} invalid syntax")
 except ParseError as e:
-    print(e)  # -> Invalid syntax
+    print(e)  # -> Invalid character at the start of a simple message: }
 
 
 try:
@@ -45,7 +45,7 @@ msg = Message("Hello, {$name}!")
 try:
     msg.format()
 except FormatError as e:
-    print(e)  # -> Unresolved variable
+    print(e)  # -> Unresolved variable: name
 ```
 
 ## Formatting with fallback values

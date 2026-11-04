@@ -1,7 +1,7 @@
 The `Message` class has a `datamodel` property which gives you access to the
 message data model which is based on the [MF2
 spec](https://github.com/unicode-org/message-format-wg/blob/main/spec/data-model/README.md).
-The data model nodes are documented [here](/datamodel).
+The data model nodes are documented [here](../datamodel.md).
 
 There are two classes to work with the datamodel - `DataModelVisitor` &
 `DataModelTransformer`.

@@ -14,6 +14,8 @@ As a selector, this function selects the exact match among the variant keys
 (after NFC normalization of the value).
 
 ```python
+from messageformat2 import format_message
+
 format_message("""\
 .input {$pet :string}
 .match $pet
@@ -76,7 +78,7 @@ and `minimumSignificantDigits` options of an annotated operand are discarded.
 
 Adds or subtracts a small integer from a numeric operand, e.g. to count "other" users:
 
-```python
+```
 .input {$likes :integer}
 .local $others = {$likes :offset subtract=1}
 ```
