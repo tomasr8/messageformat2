@@ -83,6 +83,20 @@ class DuplicateOptionName(DataModelError):
     """
 
 
+class DuplicateVariant(DataModelError):
+    """Raised when the same list of keys is used for more than one variant.
+
+    Literal keys are compared by their string values, so `foo` and `|foo|` are the same key.
+
+    Examples:
+        >>> from messageformat2 import Message
+        >>> Message(".input {$x :string} .match $x * {{First default}} * {{Second default}}") # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        messageformat2.errors.DuplicateVariant: ...
+    """
+
+
 class FormatError(MessageFormatError):
     """Base class for all errors raised during formatting."""
 

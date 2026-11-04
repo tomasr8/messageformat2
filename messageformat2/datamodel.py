@@ -5,6 +5,7 @@ from typing import Literal as TypingLiteral
 from messageformat2.errors import (
     DuplicateDeclaration,
     DuplicateOptionName,
+    DuplicateVariant,
     MissingFallbackVariant,
     MissingSelectorAnnotation,
     VariantKeyMismatch,
@@ -369,6 +370,7 @@ class DataModelValidator(DataModelVisitor):
         self._check_missing_selector_annotation(node.selectors, node.declarations)
         self._check_variant_key_mismatch(node.selectors, node.variants)
         self._check_missing_fallback_variant(node.variants)
+        self._check_duplicate_variants(node.variants)
         self.generic_visit(node)
 
     def visit_Markup(self, node: Markup) -> None:
@@ -380,9 +382,7 @@ class DataModelValidator(DataModelVisitor):
         self.generic_visit(node)
 
     def _check_declarations(self, declarations: list[Declaration]) -> None:
-        self._check_circular_reference(declarations)
         self._check_duplicate_declarations(declarations)
-        self._check_implicit_redeclaration(declarations)
 
     def _check_missing_selector_annotation(self, selectors: list[VariableRef], declarations: list[Declaration]) -> None:
         # Each selector must be a variable that directly or indirectly references a declaration with a function
@@ -418,39 +418,50 @@ class DataModelValidator(DataModelVisitor):
             msg = "Missing fallback variant"
             raise MissingFallbackVariant(msg)
 
-    def _check_circular_reference(self, declarations: list[Declaration]) -> None:
-        for decl in declarations:
-            match decl:
-                case LocalDeclaration(name=name, value=VariableExpression(arg=VariableRef(name=ref))):
-                    if name == ref:
-                        msg = f"Duplicate declaration: {name}"
-                        raise DuplicateDeclaration(msg)
-
     def _check_duplicate_declarations(self, declarations: list[Declaration]) -> None:
-        names = set()
+        # Variables, once declared, must not be redeclared. An input variable is implicitly
+        # declared when it is first used, so:
+        # - a declaration must not bind a variable that appears anywhere in a previous declaration,
+        # - an input declaration must not bind a variable that appears in its function options,
+        # - a local declaration must not bind a variable that appears in its expression.
+        seen: set[str] = set()
         for decl in declarations:
-            if decl.name in names:
-                msg = f"Duplicate declaration: {decl.name}"
+            # the operand of an input declaration is the variable being declared, so only its options count
+            referenced = self._referenced_variables(decl.value, include_operand=not isinstance(decl, InputDeclaration))
+            if decl.name in referenced or decl.name in seen:
+                msg = f"Duplicate declaration: ${decl.name}"
                 raise DuplicateDeclaration(msg)
-            names.add(decl.name)
+            seen.add(decl.name)
+            seen |= referenced
 
-    def _check_implicit_redeclaration(self, declarations: list[Declaration]) -> None:
-        implicit = set()
-        for decl in declarations:
-            if decl.name in implicit:
-                msg = f"Redeclaration of an implicit variable: {decl.name}"
-                raise DuplicateDeclaration(msg)
+    def _referenced_variables(self, expression: Expression, *, include_operand: bool) -> set[str]:
+        referenced = set()
+        match expression:
+            case VariableExpression(arg=VariableRef(name=name)) if include_operand:
+                referenced.add(name)
+        match expression:
+            case VariableExpression(annotation=annotation) | LiteralExpression(annotation=annotation) if annotation:
+                options = annotation.options
+            case FunctionExpression(annotation=annotation):
+                options = annotation.options
+            case _:
+                options = []
+        for opt in options:
+            match opt.value:
+                case VariableRef(name=name):
+                    referenced.add(name)
+        return referenced
 
-            match decl.value:
-                case (
-                    VariableExpression(annotation=FunctionAnnotation() as annotation)
-                    | LiteralExpression(annotation=FunctionAnnotation() as annotation)
-                    | FunctionExpression(annotation=FunctionAnnotation() as annotation)
-                ) if annotation is not None:
-                    for opt in annotation.options:
-                        match opt.value:
-                            case VariableRef(name=name):
-                                implicit.add(name)
+    def _check_duplicate_variants(self, variants: list[Variant]) -> None:
+        # Literal keys are compared by their string values (already NFC-normalized by the parser), so `foo`
+        # and `|foo|` are equal; the catch-all key `*` is distinct from the literal `|*|`.
+        seen: set[tuple[tuple[bool, str | None], ...]] = set()
+        for variant in variants:
+            keys = tuple((True, None) if isinstance(key, CatchallKey) else (False, key.value) for key in variant.keys)
+            if keys in seen:
+                msg = f'Duplicate variant: "{variant}"'
+                raise DuplicateVariant(msg)
+            seen.add(keys)
 
     def _check_duplicate_options(self, options: list[Option]) -> None:
         options_map = {}

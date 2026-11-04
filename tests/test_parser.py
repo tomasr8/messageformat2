@@ -5,6 +5,7 @@ from subprocess import PIPE, Popen
 import pytest
 
 from messageformat2.datamodel import (
+    CatchallKey,
     Literal,
     LiteralExpression,
     LocalDeclaration,
@@ -16,6 +17,7 @@ from messageformat2.datamodel import (
 from messageformat2.errors import (
     DuplicateDeclaration,
     DuplicateOptionName,
+    DuplicateVariant,
     MissingFallbackVariant,
     MissingSelectorAnnotation,
     ParseError,
@@ -160,6 +162,22 @@ def test_parse_complex_message(request, snapshot, message):
 .local $x = {$count :number}
 {{Redeclaration of an implicit variable}}""",
             DuplicateDeclaration,
+        ),
+        (".local $foo = {$bar} .local $bar = {42} {{_}}", DuplicateDeclaration),
+        (".local $foo = {$bar} .local $bar = {$baz} {{_}}", DuplicateDeclaration),
+        (".local $foo = {$bar :func} .local $bar = {$baz} {{_}}", DuplicateDeclaration),
+        (".local $foo = {42 :func opt=$foo} {{_}}", DuplicateDeclaration),
+        (".input {$foo :func opt=$foo} {{_}}", DuplicateDeclaration),
+        (".local $foo = {:unknown} .local $foo = {42} {{_}}", DuplicateDeclaration),
+        (".input {$var :string} .match $var * {{The first default}} * {{The second default}}", DuplicateVariant),
+        (".input {$var :string} .match $var foo {{foo}} |foo| {{quoted foo}} * {{other}}", DuplicateVariant),
+        (
+            ".input {$x :string} .input {$y :string} .match $x $y * foo {{1}} bar * {{2}} * |foo| {{3}} * * {{4}}",
+            DuplicateVariant,
+        ),
+        (
+            ".local $x = {foo :string} .match $x \u1e0c\u0307 {{NFC}} D\u0323\u0307 {{NFD}} * {{other}}",
+            DuplicateVariant,
         ),
         (
             """\
@@ -331,6 +349,13 @@ def test_names_are_nfc_normalized():
     assert isinstance(ast.declarations[0], LocalDeclaration)
     assert ast.declarations[0].name == nfc
     assert ast.pattern == [VariableExpression(arg=VariableRef(name=nfc), annotation=None, attributes=[])]
+
+
+def test_catchall_key_is_distinct_from_literal_star():
+    ast = parse(".local $star = {star :string} .match $star |*| {{Literal star}} * {{The default}}")
+    assert isinstance(ast, SelectMessage)
+    assert ast.variants[0].keys == [Literal(value="*")]
+    assert ast.variants[1].keys == [CatchallKey(value=None)]
 
 
 def test_keys_are_nfc_normalized():
