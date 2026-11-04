@@ -267,7 +267,7 @@ def test_whitespace(ws):
     assert ast.pattern == [LiteralExpression(arg=Literal(value="foo"), annotation=None, attributes=[])]
 
 
-@pytest.mark.parametrize("ws", ["\u00a0", "\u000b", "\u000c", "\u2028"])
+@pytest.mark.parametrize("ws", ["\u00a0", "\u000b", "\u000c", "\u2028", "\u1680"])
 def test_invalid_whitespace(ws):
     with pytest.raises(ParseError):
         parse(f"{{{ws}foo{ws}}}")
@@ -362,3 +362,42 @@ def test_keys_are_nfc_normalized():
     ast = parse(".local $x = {foo :string} .match $x D\u0323\u0307 {{NFD}} * {{other}}")
     assert isinstance(ast, SelectMessage)
     assert ast.variants[0].keys == [Literal(value="\u1e0c\u0307")]
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        "0",
+        "-0",
+        "+",
+        "01",
+        "1.",
+        ".5",
+        "1e3",
+        "1E-3",
+        "-",
+        "·",
+        "🥔",
+        "\u00a1\u061d\u1681\u200b\u2010\u2030\u2060\u206a\u3001\ue000\ufdf0",
+        "foo-bar.baz",
+    ],
+)
+def test_unquoted_literal(literal):
+    ast = parse(f"{{{literal}}}")
+    assert isinstance(ast, PatternMessage)
+    assert ast.pattern == [LiteralExpression(arg=Literal(value=literal), annotation=None, attributes=[])]
+
+
+@pytest.mark.parametrize("name", ["place-.", "foo.bar", "+", "_x", "\u1e0c\u0307", "\u1681"])
+def test_variable_name(name):
+    ast = parse(f"{{${name}}}")
+    assert isinstance(ast, PatternMessage)
+    assert ast.pattern == [VariableExpression(arg=VariableRef(name=name), annotation=None, attributes=[])]
+
+
+@pytest.mark.parametrize(
+    "message", ["{$-x}", "{$1x}", "{$.x}", "{$x:y}", "{$ x}", "{:1fn}", "{:fn 1opt=1}", "{$\u1680x}"]
+)
+def test_invalid_name(message):
+    with pytest.raises(ParseError):
+        parse(message)

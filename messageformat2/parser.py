@@ -27,18 +27,18 @@ from messageformat2.datamodel import (
 from messageformat2.errors import ParseError
 
 
-_name_start = (
-    "^"
-    "[a-zA-Z_"
-    "\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u02ff"
-    "\u0370-\u037d\u037f-\u061b\u061d-\u1fff\u200c-\u200d"  # U+061C ALM is a bidi mark, not a name character
-    "\u2070-\u218f\u2c00-\u2fef\u3001-\ud7ff"
-    "\uf900-\ufdcf\ufdf0-\ufffd\U00010000-\U000effff]"
+# name-start = ALPHA / "+" / "_" / <most non-ASCII code points, excluding bidi controls,
+#              control and whitespace characters, surrogates and noncharacters>
+# name-char  = name-start / DIGIT / "-" / "."
+_name_start_chars = (
+    "a-zA-Z+_"
+    "\u00a1-\u061b\u061d-\u167f\u1681-\u1fff\u200b-\u200d\u2010-\u2027"
+    "\u2030-\u205e\u2060-\u2065\u206a-\u2fff\u3001-\ud7ff\ue000-\ufdcf\ufdf0-\ufffd"
+    # Supplementary planes: U+n0000..U+nFFFD for n in 1..16 (U+nFFFE and U+nFFFF are noncharacters)
+    + "".join(chr(plane << 16) + "-" + chr((plane << 16) | 0xFFFD) for plane in range(1, 17))
 )
-name_start = re.compile(_name_start)
-name_char = re.compile(rf"{_name_start}|[0-9-.\u00B7\u0300-\u036F\u203F-\u2040]")
-
-number_literal = re.compile(r"^-?(?:(?:0|[1-9])\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
+name_start = re.compile(f"^[{_name_start_chars}]")
+name_char = re.compile(f"^[{_name_start_chars}0-9.-]")
 
 # ws   = SP / HTAB / CR / LF / %x3000
 # bidi = %x061C / %x200E / %x200F / %x2066-2069  (ALM, LRM, RLM, LRI, RLI, FSI, PDI)
@@ -475,9 +475,14 @@ def parse_quoted_literal(queue: Queue) -> Literal:
 
 
 def parse_unquoted_literal(queue: Queue) -> Literal:
-    if queue.matches(number_literal):
-        return Literal(value=queue.pop_match(number_literal))
-    return Literal(value=parse_name(queue))
+    # unquoted-literal = 1*name-char
+    if not queue.matches(name_char):
+        msg = f"Invalid literal: {queue.peek()}"
+        raise ParseError(msg)
+    literal = queue.pop()
+    while queue.matches(name_char):
+        literal += queue.pop()
+    return Literal(value=literal)
 
 
 def parse_whitespace(queue: Queue) -> str:
