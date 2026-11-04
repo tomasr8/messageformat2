@@ -23,7 +23,9 @@ The library includes:
 - Helper classes to inspect and transform the message [data
   model](https://github.com/unicode-org/message-format-wg/blob/main/spec/data-model/README.md)
 
-## [Documentation](https://messageformat2.readthedocs.io/en/latest/)
+## Documentation
+
+Documentation is available here: [https://messageformat2.readthedocs.io/en/latest/](https://messageformat2.readthedocs.io/en/latest/)
 
 ## Installation
 
