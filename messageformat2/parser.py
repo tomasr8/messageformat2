@@ -414,6 +414,7 @@ def parse_function_annotation(queue: Queue) -> FunctionAnnotation:
 
 
 def parse_attribute(queue: Queue) -> Attribute:
+    # attribute = "@" identifier [o "=" o literal]
     queue.pop("@")
     name = parse_identifier(queue)
 
@@ -423,9 +424,7 @@ def parse_attribute(queue: Queue) -> Attribute:
     parse_optional_whitespace(queue)
     queue.pop()  # '='
     parse_optional_whitespace(queue)
-
-    value = parse_variable(queue) if queue.peek() == "$" else parse_literal(queue)
-    return Attribute(name=name, value=value)
+    return Attribute(name=name, value=parse_literal(queue))
 
 
 def parse_option(queue: Queue) -> Option:

@@ -54,7 +54,7 @@ class Literal(Node):
 @dataclass
 class Attribute(Node):
     name: str
-    value: Literal | VariableRef | None
+    value: Literal | None
 
     @property
     def fields(self) -> tuple[str, ...]:

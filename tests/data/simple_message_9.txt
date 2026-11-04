@@ -6,7 +6,7 @@ PatternMessage(
             arg=VariableRef(name="name"),
             annotation=None,
             attributes=[
-                Attribute(name="attr1", value=VariableRef(name="variable")),
+                Attribute(name="attr1", value=Literal(value="quoted")),
                 Attribute(name="attr2", value=Literal(value="yes")),
             ],
         ),

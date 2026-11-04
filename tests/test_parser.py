@@ -41,7 +41,7 @@ def ruff_format(source):
         "Hello, {:namespace:function @attr}!",
         "Hello, {$name :capitalize arg=yes opt=$variable}!",
         "Hello, {$name :capitalize @attr1 @attr2}!",
-        "Hello, {$name @attr1=$variable @attr2=yes}!",
+        "Hello, {$name @attr1=|quoted| @attr2=yes}!",
         "Hello, {1.23 :round}!",
         "Hello, {John :capitalize @attr}!",
         "Hello, {|quoted| :capitalize}!",
@@ -271,8 +271,12 @@ def test_bidi_marks_are_not_allowed_inside_names(message):
         ".unknown reserved-body |literal| {$x} .match {$x :string} * {{}}",
         ".i {1} {{}}",
         ".l $y = {|bar|} {{}}",
+        # attribute values can only be literals
+        "{$x @attr=$var}",
+        "{:f @attr=$var}",
+        "{#tag @attr=$var}",
     ],
 )
-def test_reserved_syntax_is_a_syntax_error(message):
+def test_removed_syntax_is_a_syntax_error(message):
     with pytest.raises(ParseError):
         parse(message)
