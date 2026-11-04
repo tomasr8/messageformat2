@@ -54,3 +54,29 @@ To signal a specific error, a formatter can raise one of the `MessageFunctionErr
 defined by the spec: `BadOperand` (wrong operand type or format), `BadOption` (invalid option or
 option value), `BadVariantKey` (a variant key the selector cannot interpret) or `UnsupportedOperation`.
 These are reraised as-is.
+
+## Annotated operands
+
+If the operand of your formatter is a variable that was already annotated with a function,
+`value` is a `messageformat2.builtins.LazyValue` carrying the earlier function's name (`fn_name`),
+operand (`value`) and resolved options (`options`). `str(value)` gives the formatted value of the earlier annotation.
+It is up to your function to decide which operands it accepts and whether to inherit the earlier options;
+raise `BadOperand` if your function cannot use the operand.
+
+```python
+from messageformat2.builtins import LazyValue
+from messageformat2.errors import BadOperand
+
+def shout(value, locale, options) -> str:
+    if isinstance(value, LazyValue):
+        if value.fn_name != "string":
+            raise BadOperand(f"Cannot shout a :{value.fn_name}")
+        value = str(value)
+    return str(value).upper()
+
+format_message(
+    ".local $name = {alice :string} {{{$name :shout}}}",
+    formatters={"shout": shout}
+)
+# -> "ALICE"
+```

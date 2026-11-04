@@ -22,26 +22,22 @@ print(counter)  # -> 2
 
 ## Function composition
 
-Composition of functions is only allowed for the same functions:
+A variable which was annotated with a function can be annotated again, for example in a placeholder.
+The function handler then receives the resolved value of the earlier annotation
+(a `messageformat2.builtins.LazyValue` carrying the earlier function's name, operand and options) as its operand,
+and decides what to do with it. The built-in numeric functions accept each other's resolved values
+and inherit their options, with the options of the later expression taking priority:
 
 ```python
-.local $x {42 :integer}
-{{x = {$x :integer}}}
+.local $x = {42 :number minimumFractionDigits=2 signDisplay=always}
+{{x = {$x :number minimumFractionDigits=1}}}  # -> "x = +42.0"
+
+.local $x = {1.25 :integer}
+{{x = {$x :number}}}  # -> "x = 1"
 ```
 
-This will raise an exception:
-
-```python
-.local $x {42 :integer}
-{{x = {$x :string}}}
-```
-
-Options are merged together with the later options overwritting any earlier options:
-
-```python
-.local $date {|2024-05-10| :date style=short}
-{{date = {$date :date style=full}}}
-```
+whereas e.g. `{$x :date}` would raise `BadOperand`. See [Custom formatters](howto/formatter.md) for how to
+handle such operands in your own functions.
 
 ## Whitespace
 

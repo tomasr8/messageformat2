@@ -4,6 +4,7 @@ import pytest
 from babel import Locale
 
 from messageformat2 import Message
+from messageformat2.builtins import LazyValue
 from messageformat2.errors import (
     BadOption,
     BadSelector,
@@ -26,7 +27,12 @@ def append(value: str, locale, options) -> str:  # noqa: ARG001
     return value + text
 
 
-def capitalize(value: str, locale, options) -> str:  # noqa: ARG001
+def capitalize(value: str | LazyValue, locale, options) -> str:  # noqa: ARG001
+    while isinstance(value, LazyValue):
+        # re-annotation: inherit the options of the earlier :capitalize annotations
+        assert value.fn_name == "capitalize"
+        options = {**value.options, **options}
+        value = value.value
     if options.get("start", "yes") == "yes":
         value = value[0].upper() + value[1:]
     if options.get("end", "no") == "yes":
@@ -292,3 +298,25 @@ def test_input_names_are_nfc_normalized():
     assert Message(f"{{${nfd}}}").format({nfc: "foo"}) == "foo"
     assert Message(f"{{${nfc}}}").format({nfd: "foo"}) == "foo"
     assert Message(f".input {{${nfd}}} {{{{{{${nfc}}}}}}}").format({nfd: "foo"}) == "foo"
+
+
+def test_reannotation_passes_lazy_value_with_its_options():
+    def fn(value, locale, options) -> str:  # noqa: ARG001
+        if isinstance(value, LazyValue):
+            value = f"{value.fn_name}[{value.value}:{sorted(value.options.items())}]"
+        return f"{value}:{sorted(options.items())}"
+
+    message = ".local $x = {42 :fn a=1 b=2} {{{$x :fn b=3 c=$c}}}"
+    out = Message(message).format({"c": 4}, formatters={"fn": fn})
+    assert out == "fn[42:[('a', '1'), ('b', '2')]]:[('b', '3'), ('c', 4)]"
+
+
+def test_reannotation_with_different_function_passes_lazy_value():
+    def shout(value, locale, options) -> str:  # noqa: ARG001
+        assert isinstance(value, LazyValue)
+        assert value.fn_name == "string"
+        assert value.value == "alice"
+        return str(value).upper()
+
+    message = ".local $name = {alice :string} {{{$name :shout}}}"
+    assert Message(message).format(formatters={"shout": shout}) == "ALICE"

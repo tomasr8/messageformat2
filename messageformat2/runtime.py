@@ -4,12 +4,9 @@ from typing import Any
 
 from babel import Locale
 
-from messageformat2.builtins import Registry
+from messageformat2.builtins import LazyValue, Registry, ResolvedOptions
 from messageformat2.errors import (
-    BadOperand,
     BadSelector,
-    MessageFunctionError,
-    UnknownFunction,
     UnresolvedVariable,
 )
 from messageformat2.parser import (
@@ -39,46 +36,6 @@ class FormattingContext:
     registry: Registry
     declarations: dict[str, Any]
     strict: bool = True
-
-
-class LazyValue:
-    def __init__(self, *, fn_name: str, value: Any = None, options: dict[str, Any] | None = None):
-        self.fn_name = fn_name
-        self.value = value
-        self.options = options or {}
-
-    def format(self, ctx: FormattingContext) -> str:
-        if formatter := ctx.registry.formatters.get(self.fn_name):
-            try:
-                return str(formatter(value=self.value, locale=ctx.locale, options=self.options))
-            except MessageFunctionError:
-                raise
-            except Exception as e:
-                msg = f"Exception raised while evaluating formatter :{self.fn_name}"
-                raise MessageFunctionError(msg) from e
-        if self.fn_name in ctx.registry.selectors:
-            msg = f"Function :{self.fn_name} does not support formatting"
-            raise MessageFunctionError(msg)
-        msg = f"Unknown function: {self.fn_name}"
-        raise UnknownFunction(msg)
-
-    def select(self, ctx: FormattingContext, *, keys: list[str]) -> list[str]:
-        if selector := ctx.registry.selectors.get(self.fn_name):
-            try:
-                return selector(value=self.value, locale=ctx.locale, options=self.options, keys=keys)
-            except MessageFunctionError:
-                raise
-            except Exception as e:
-                msg = f"Exception raised while evaluating selector :{self.fn_name}"
-                raise BadSelector(msg) from e
-        if self.fn_name in ctx.registry.formatters:
-            msg = f"Bad selector: function :{self.fn_name} does not support selection"
-            raise BadSelector(msg)
-        msg = f"Unknown function: {self.fn_name}"
-        raise UnknownFunction(msg)
-
-    def __repr__(self):
-        return f"LazyValue({self.fn_name}({self.value}, {self.options}))"
 
 
 def format_message(message: Message, locale: Locale, inputs: dict[str, Any], registry: Registry) -> str:
@@ -123,7 +80,7 @@ def format_select_message(message: SelectMessage, ctx: FormattingContext) -> str
     pref = []
     for i, selector in enumerate(selectors):
         keys = [key.value for v in message.variants if isinstance(key := v.keys[i], Literal)]
-        pref.append(selector.select(ctx, keys=keys))
+        pref.append(selector.select(keys))
 
     variants = filter_variants(pref, message.variants)
     pattern = sort_variants(pref, variants)
@@ -176,12 +133,7 @@ def resolve_selector(selector: VariableRef, ctx: FormattingContext) -> LazyValue
 
 
 def format_expression(expression: Expression, ctx: FormattingContext) -> str:
-    resolved = resolve_expression(expression, ctx)
-    match resolved:
-        case LazyValue() as lazy_value:
-            return lazy_value.format(ctx)
-        case _:
-            return str(resolved)
+    return str(resolve_expression(expression, ctx))
 
 
 def format_markup(markup: Markup, ctx: FormattingContext) -> str:
@@ -204,8 +156,8 @@ def format_option(option: Option, ctx: FormattingContext) -> str:
     return f"{option.name}={value}"
 
 
-def resolve_options(options: list[Option], ctx: FormattingContext) -> dict[str, Any]:
-    return {opt.name: resolve_option(opt, ctx) for opt in options}
+def resolve_options(options: list[Option], ctx: FormattingContext) -> ResolvedOptions:
+    return ResolvedOptions({opt.name: resolve_option(opt, ctx) for opt in options})
 
 
 def resolve_option(option: Option, ctx: FormattingContext) -> Any:
@@ -216,9 +168,18 @@ def resolve_option(option: Option, ctx: FormattingContext) -> Any:
             resolved = resolve_variable(name, ctx)
             match resolved:
                 case LazyValue() as lazy_value:
-                    return lazy_value.format(ctx)
+                    return lazy_value.format()
                 case _:
                     return resolved
+
+
+def annotate(resolved: Any, fn_name: str, options: ResolvedOptions, ctx: FormattingContext) -> LazyValue:
+    """Apply the function `fn_name` to a resolved value.
+
+    If the value is already annotated (a `LazyValue`), it is passed to the function handler as its operand:
+    whether and how the options of the operand are inherited is up to the function.
+    """
+    return LazyValue(fn_name=fn_name, value=resolved, options=options, ctx=ctx)
 
 
 def resolve_expression(expression: Expression, ctx: FormattingContext) -> Any | LazyValue:
@@ -227,24 +188,16 @@ def resolve_expression(expression: Expression, ctx: FormattingContext) -> Any | 
             if not annotation:
                 return value
             options = resolve_options(annotation.options, ctx)
-            return LazyValue(fn_name=annotation.name, value=value, options=options)
+            return LazyValue(fn_name=annotation.name, value=value, options=options, ctx=ctx)
         case VariableExpression(arg=VariableRef(ref), annotation=annotation):
             if not annotation:
                 return resolve_variable(ref, ctx)
-            name = annotation.name
             resolved = resolve_variable(ref, ctx)
             options = resolve_options(annotation.options, ctx)
-            match resolved:
-                case LazyValue(fn_name=lazy_function, value=lazy_value, options=lazy_options):
-                    if lazy_function and lazy_function != name:
-                        msg = f"Bad operand: ${ref} is annotated with :{lazy_function}, cannot apply :{name}"
-                        raise BadOperand(msg)
-                    return LazyValue(fn_name=name, value=lazy_value, options=(lazy_options or {}) | options)
-                case _:
-                    return LazyValue(fn_name=name, value=resolved, options=options)
+            return annotate(resolved, annotation.name, options, ctx)
         case FunctionExpression(annotation=FunctionAnnotation(name=name, options=options)):
             options = resolve_options(options, ctx)
-            return LazyValue(fn_name=name, value=None, options=options)
+            return LazyValue(fn_name=name, value=None, options=options, ctx=ctx)
 
 
 def resolve_variable(name: str, ctx: FormattingContext) -> Any:
@@ -252,19 +205,11 @@ def resolve_variable(name: str, ctx: FormattingContext) -> Any:
         decl = ctx.declarations[name]
         match decl:
             case InputDeclaration(value=VariableExpression(annotation=annotation)):
-                if not annotation:
-                    return resolve_global(name, ctx)
-                fn_name = annotation.name
                 resolved = resolve_global(name, ctx)
+                if not annotation:
+                    return resolved
                 options = resolve_options(annotation.options, ctx)
-                match resolved:
-                    case LazyValue(fn_name=lazy_fn_name, value=lazy_value, options=lazy_options):
-                        if lazy_fn_name and lazy_fn_name != fn_name:
-                            msg = f"Bad operand: ${name} is annotated with :{lazy_fn_name}, cannot apply :{fn_name}"
-                            raise BadOperand(msg)
-                        return LazyValue(fn_name=fn_name, value=lazy_value, options=(lazy_options or {}) | options)
-                    case _:
-                        return LazyValue(fn_name=fn_name, value=resolved, options=options)
+                return annotate(resolved, annotation.name, options, ctx)
             case _:
                 expression = decl.value
                 return resolve_expression(expression, ctx)

@@ -1,6 +1,6 @@
 import datetime as _datetime
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, Self
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
 from babel import Locale
 from babel.dates import format_date as _format_date
@@ -9,7 +9,70 @@ from babel.dates import format_time as _format_time
 from babel.dates import match_skeleton
 from babel.numbers import format_compact_decimal, format_decimal, format_percent, format_scientific
 
-from messageformat2.errors import BadOption
+from messageformat2.errors import BadOption, BadSelector, MessageFunctionError, UnknownFunction
+
+
+if TYPE_CHECKING:
+    from messageformat2.runtime import FormattingContext
+
+
+class ResolvedOptions(dict[str, Any]):
+    """The resolved options of an expression, mapping option names to their resolved values."""
+
+
+class LazyValue:
+    """The resolved value of an expression with a function.
+
+    The function is only called when the value is formatted or used for selection. A `LazyValue` is passed
+    as the operand of a function when a variable that was already annotated with a *different* function
+    is annotated again, e.g. `$y` in `.local $x = {42 :integer} .local $y = {$x :number}`. The function
+    handler can then inspect `fn_name`, `value` and `options` of the operand (`str(operand)` gives its
+    formatted value).
+    """
+
+    def __init__(self, *, fn_name: str, value: Any, options: ResolvedOptions | None, ctx: "FormattingContext") -> None:
+        self.fn_name = fn_name
+        self.value = value
+        self.options = options if options is not None else ResolvedOptions()
+        self._ctx = ctx
+
+    def format(self) -> str:
+        ctx = self._ctx
+        if formatter := ctx.registry.formatters.get(self.fn_name):
+            try:
+                return str(formatter(value=self.value, locale=ctx.locale, options=self.options))
+            except MessageFunctionError:
+                raise
+            except Exception as e:
+                msg = f"Exception raised while evaluating formatter :{self.fn_name}"
+                raise MessageFunctionError(msg) from e
+        if self.fn_name in ctx.registry.selectors:
+            msg = f"Function :{self.fn_name} does not support formatting"
+            raise MessageFunctionError(msg)
+        msg = f"Unknown function: {self.fn_name}"
+        raise UnknownFunction(msg)
+
+    def select(self, keys: list[str]) -> list[str]:
+        ctx = self._ctx
+        if selector := ctx.registry.selectors.get(self.fn_name):
+            try:
+                return selector(value=self.value, locale=ctx.locale, options=self.options, keys=keys)
+            except MessageFunctionError:
+                raise
+            except Exception as e:
+                msg = f"Exception raised while evaluating selector :{self.fn_name}"
+                raise BadSelector(msg) from e
+        if self.fn_name in ctx.registry.formatters:
+            msg = f"Bad selector: function :{self.fn_name} does not support selection"
+            raise BadSelector(msg)
+        msg = f"Unknown function: {self.fn_name}"
+        raise UnknownFunction(msg)
+
+    def __str__(self) -> str:
+        return self.format()
+
+    def __repr__(self) -> str:
+        return f"LazyValue({self.fn_name}({self.value!r}, {dict(self.options)!r}))"
 
 
 def format_skeleton(
