@@ -4,7 +4,7 @@ import pytest
 from babel import Locale
 
 from messageformat2 import Message
-from messageformat2.builtins import LazyValue
+from messageformat2.builtins import LazyValue, xml_markup
 from messageformat2.errors import (
     BadOption,
     BadSelector,
@@ -161,14 +161,25 @@ def test_variable_options(message, inputs, formatted):
 
 
 @pytest.mark.parametrize(
-    ("message", "inputs", "formatted"),
+    ("message", "inputs", "formatted", "xml"),
     [
-        ('{#strong opt=|"abc"|}Click here!{/strong}', None, '<strong opt="abc">Click here!</strong>'),
-        ('Hello, {#strong text=|"John"| /}!', None, 'Hello, <strong text="John"/>!'),
+        ("{#strong}Click here!{/strong}", None, "Click here!", "<strong>Click here!</strong>"),
+        ('{#strong opt=|"abc"|}Click here!{/strong}', None, "Click here!", '<strong opt="abc">Click here!</strong>'),
+        ('Hello, {#strong text=|"John"| /}!', None, "Hello, !", 'Hello, <strong text="John"/>!'),
+        ("{#img alt=$alt @attr=1 /}", {"alt": "Cancel"}, "", "<img alt=Cancel/>"),
+        ("{#ns:tag}content{/ns:tag}", None, "content", "<ns:tag>content</ns:tag>"),
     ],
 )
-def test_markup(message, inputs, formatted):
+def test_markup(message, inputs, formatted, xml):
     assert Message(message).format(inputs) == formatted
+    assert Message(message).format(inputs, markup=xml_markup) == xml
+
+
+def test_custom_markup():
+    def markup(kind, name, options) -> str:  # noqa: ARG001
+        return {"open": "[", "close": "]", "standalone": "|"}[kind]
+
+    assert Message("{#b}bold{/b} {#br/}").format(markup=markup) == "[bold] |"
 
 
 @pytest.mark.parametrize(

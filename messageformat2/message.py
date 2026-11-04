@@ -2,19 +2,20 @@ from typing import Any
 
 from babel import Locale
 
-from messageformat2.builtins import Formatter, Selector, default_registry
+from messageformat2.builtins import Formatter, MarkupFormatter, Selector, default_registry
 from messageformat2.datamodel import Node
 from messageformat2.parser import parse
 from messageformat2.runtime import format_message as _format_message
 
 
-def format_message(
+def format_message(  # noqa: PLR0913
     msg: str,
     inputs: dict[str, Any] | None = None,
     locale: Locale | str | None = None,
     *,
     formatters: dict[str, Formatter] | None = None,
     selectors: dict[str, Selector] | None = None,
+    markup: MarkupFormatter | None = None,
 ) -> str:
     """Format a message.
 
@@ -38,6 +39,7 @@ def format_message(
         inputs: Input variables referenced by the message.
         formatters: Additional formatters.
         selectors: Additional selectors.
+        markup: How to format markup (`{#b}...{/b}`). By default markup is formatted as an empty string.
 
     Returns:
         The formatted message.
@@ -47,7 +49,7 @@ def format_message(
         DataModelError: If the message contains a semantic error.
         FormatError: If the message cannot be formatted.
     """
-    return Message(msg).format(inputs, locale, formatters=formatters, selectors=selectors)
+    return Message(msg).format(inputs, locale, formatters=formatters, selectors=selectors, markup=markup)
 
 
 class Message:
@@ -74,6 +76,7 @@ class Message:
         *,
         formatters: dict[str, Formatter] | None = None,
         selectors: dict[str, Selector] | None = None,
+        markup: MarkupFormatter | None = None,
     ) -> str:
         """Format the message.
 
@@ -94,6 +97,8 @@ class Message:
             inputs: Input variables referenced by the message.
             formatters: Additional formatters.
             selectors: Additional selectors.
+            markup: How to format markup (`{#b}...{/b}`). By default markup is formatted as an empty string;
+                use `messageformat2.builtins.xml_markup` to get XML-ish tags.
 
         Returns:
             The formatted message.
@@ -109,8 +114,8 @@ class Message:
             inputs = {}
         registry = (
             default_registry
-            if not formatters and not selectors
-            else default_registry.extend(formatters=formatters, selectors=selectors)
+            if not formatters and not selectors and markup is None
+            else default_registry.extend(formatters=formatters, selectors=selectors, markup=markup)
         )
         return _format_message(self._ast, locale, inputs, registry)
 

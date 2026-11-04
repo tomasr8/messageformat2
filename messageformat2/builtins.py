@@ -95,6 +95,24 @@ class Selector(Protocol):
     def __call__(self, value: Any, locale: Locale, options: dict[str, Any], keys: list[str]) -> list[str]: ...
 
 
+class MarkupFormatter(Protocol):
+    def __call__(self, kind: Literal["open", "standalone", "close"], name: str, options: dict[str, Any]) -> str: ...
+
+
+def xml_markup(kind: Literal["open", "standalone", "close"], name: str, options: dict[str, Any]) -> str:
+    """Format markup as XML-ish tags: `{#b}bold{/b}` -> `<b>bold</b>`, `{#img src=x /}` -> `<img src=x/>`.
+
+    By default markup is formatted as an empty string as required by the spec; pass `markup=xml_markup` to
+    `Message.format()` to get tags instead.
+    """
+    attributes = "".join(f" {key}={value}" for key, value in options.items())
+    if kind == "open":
+        return f"<{name}{attributes}>"
+    if kind == "standalone":
+        return f"<{name}{attributes}/>"
+    return f"</{name}{attributes}>"
+
+
 def string_formatter(value: Any, locale: Locale, options: dict[str, Any]) -> str:  # noqa: ARG001
     return str(value)
 
@@ -354,13 +372,20 @@ def time_formatter(value: Any, locale: Locale, options: dict[str, Any]) -> str:
 class Registry:
     formatters: dict[str, Formatter] = field(default_factory=dict)
     selectors: dict[str, Selector] = field(default_factory=dict)
+    markup: MarkupFormatter | None = None
+    """How to format markup when formatting to a string; `None` formats all markup as an empty string."""
 
     def extend(
-        self, *, formatters: dict[str, Formatter] | None = None, selectors: dict[str, Selector] | None = None
+        self,
+        *,
+        formatters: dict[str, Formatter] | None = None,
+        selectors: dict[str, Selector] | None = None,
+        markup: MarkupFormatter | None = None,
     ) -> Self:
         return type(self)(
             formatters={**self.formatters, **(formatters or {})},
             selectors={**self.selectors, **(selectors or {})},
+            markup=markup or self.markup,
         )
 
 

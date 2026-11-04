@@ -137,23 +137,10 @@ def format_expression(expression: Expression, ctx: FormattingContext) -> str:
 
 
 def format_markup(markup: Markup, ctx: FormattingContext) -> str:
-    options = format_options(markup.options, ctx)
-    options = f" {options}" if options else ""
-
-    if markup.kind == "standalone":
-        return f"<{markup.name}{options}/>"
-    if markup.kind == "open":
-        return f"<{markup.name}{options}>"
-    return f"</{markup.name}{options}>"
-
-
-def format_options(options: list[Option], ctx: FormattingContext) -> str:
-    return " ".join(format_option(opt, ctx) for opt in options)
-
-
-def format_option(option: Option, ctx: FormattingContext) -> str:
-    value = resolve_option(option, ctx)
-    return f"{option.name}={value}"
+    # When formatting to a string, the default representation of all markup is an empty string
+    if ctx.registry.markup is None:
+        return ""
+    return ctx.registry.markup(markup.kind, markup.name, resolve_options(markup.options, ctx))
 
 
 def resolve_options(options: list[Option], ctx: FormattingContext) -> ResolvedOptions:
