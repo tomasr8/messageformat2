@@ -31,21 +31,22 @@ Literals are always strings, so `{|1234.5|}` is formatted verbatim.
 
 ## Bidirectional text
 
-Following the spec's *Default Bidi Strategy*, placeholders are wrapped in Unicode isolate controls so that
-mixed left-to-right and right-to-left text displays correctly: a value whose direction is unknown (strings,
-literals, the results of custom formatters) is wrapped in U+2068 FIRST STRONG ISOLATE … U+2069 POP DIRECTIONAL
-ISOLATE, a value whose direction differs from the message's (e.g. a number, which has the direction of the
-locale, in a message formatted in an RTL locale) in U+2066 LEFT-TO-RIGHT ISOLATE / U+2067 RIGHT-TO-LEFT ISOLATE.
+With `bidi_isolation=True`, placeholders are wrapped in Unicode isolate controls following the spec's
+*Default Bidi Strategy*, so that mixed left-to-right and right-to-left text displays correctly: a value whose
+direction is unknown (strings, literals, the results of custom formatters) is wrapped in U+2068 FIRST STRONG
+ISOLATE … U+2069 POP DIRECTIONAL ISOLATE, a value whose direction differs from the message's (e.g. a number,
+which has the direction of the locale, in a message formatted in an RTL locale) in U+2066 LEFT-TO-RIGHT ISOLATE /
+U+2067 RIGHT-TO-LEFT ISOLATE.
 
 ```python
-Message("Hello, {$name}!").format({"name": "Alice"})  # -> "Hello, \u2068Alice\u2069!"
-Message("{$n :number} items").format({"n": 3})          # -> "3 items" (same direction, no isolation)
+Message("Hello, {$name}!").format({"name": "Alice"}, bidi_isolation=True)  # -> "Hello, \u2068Alice\u2069!"
+Message("{$n :number} items").format({"n": 3}, bidi_isolation=True)  # -> "3 items" (same direction)
 ```
 
-The controls are invisible but do change the string, so pass `bidi_isolation="none"` if you compare or
-post-process the output. The `u:dir` option sets the direction of a placeholder (`ltr`, `rtl` or `auto`) and
-forces its isolation: `{$name :string u:dir=rtl}`. Custom formatters can return a
-`messageformat2.builtins.FormattedValue(text, direction)` to declare the direction of their output.
+The controls are invisible but do change the string, which is why isolation is off by default.
+The `u:dir` option sets the direction of a placeholder (`ltr`, `rtl` or `auto`) and forces its isolation:
+`{$name :string u:dir=rtl}`. Custom formatters can return a `messageformat2.builtins.FormattedValue(text, direction)`
+to declare the direction of their output.
 
 ## Function composition
 

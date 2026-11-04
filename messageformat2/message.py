@@ -7,7 +7,6 @@ from messageformat2.builtins import Formatter, MarkupFormatter, Selector, defaul
 from messageformat2.datamodel import Node
 from messageformat2.errors import MessageFormatError
 from messageformat2.parser import parse
-from messageformat2.runtime import BidiIsolation
 from messageformat2.runtime import format_message as _format_message
 
 
@@ -20,14 +19,14 @@ def format_message(  # noqa: PLR0913
     selectors: dict[str, Selector] | None = None,
     markup: MarkupFormatter | None = None,
     on_error: Callable[[MessageFormatError], None] | None = None,
-    bidi_isolation: BidiIsolation = "default",
+    bidi_isolation: bool = False,
 ) -> str:
     """Format a message.
 
     Use this function if you only need to format a message once.
 
     Examples:
-        >>> format_message("Hello, {$name}!", {"name": "Alice"}, bidi_isolation="none")
+        >>> format_message("Hello, {$name}!", {"name": "Alice"})
         'Hello, Alice!'
         >>> message = Message('''\\
         ... .input {$count :integer}
@@ -46,7 +45,7 @@ def format_message(  # noqa: PLR0913
         markup: How to format markup (`{#b}...{/b}`). By default markup is formatted as an empty string.
         on_error: Called with each formatting error instead of raising it; the failed placeholder is
             formatted as a fallback value such as `{$name}`.
-        bidi_isolation: The bidirectional isolation strategy, see `Message.format()`.
+        bidi_isolation: Whether to isolate placeholders with bidi controls, see `Message.format()`.
 
     Returns:
         The formatted message.
@@ -93,18 +92,18 @@ class Message:
         selectors: dict[str, Selector] | None = None,
         markup: MarkupFormatter | None = None,
         on_error: Callable[[MessageFormatError], None] | None = None,
-        bidi_isolation: BidiIsolation = "default",
+        bidi_isolation: bool = False,
     ) -> str:
         """Format the message.
 
         Examples:
             >>> message = Message("Hello, {$name}!")
             >>> message.format({"name": "Alice"})
-            'Hello, \u2068Alice\u2069!'
-            >>> message.format({"name": "Alice"}, bidi_isolation="none")
             'Hello, Alice!'
+            >>> message.format({"name": "Alice"}, bidi_isolation=True)
+            'Hello, \u2068Alice\u2069!'
             >>> errors = []
-            >>> message.format({}, on_error=errors.append, bidi_isolation="none")
+            >>> message.format({}, on_error=errors.append)
             'Hello, {$name}!'
             >>> errors
             [UnresolvedVariable('Unresolved variable: name')]
@@ -126,12 +125,12 @@ class Message:
             on_error: Called with each formatting error instead of raising it. The failed placeholder is
                 formatted as a fallback value (`{$name}`, `{|literal|}` or `{:function}`) and a selector
                 which fails only matches the catch-all key `*`.
-            bidi_isolation: How to isolate placeholders from the surrounding text so that bidirectional
-                text displays correctly. `"default"` (the spec's Default Bidi Strategy) wraps each placeholder
-                whose direction is unknown or differs from the message's in Unicode isolate controls
+            bidi_isolation: Whether to isolate placeholders from the surrounding text so that bidirectional
+                text displays correctly, following the spec's Default Bidi Strategy: each placeholder whose
+                direction is unknown or differs from the message's is wrapped in Unicode isolate controls
                 (U+2066-U+2069); numbers and dates are formatted in the direction of the locale, strings and
                 values of custom formatters have an unknown direction unless the `u:dir` option is set.
-                `"none"` inserts no controls.
+                Off by default, since the controls are invisible but change the string.
 
         Returns:
             The formatted message.
@@ -150,7 +149,7 @@ class Message:
             if not formatters and not selectors and markup is None
             else default_registry.extend(formatters=formatters, selectors=selectors, markup=markup)
         )
-        return _format_message(self._ast, locale, inputs, registry, on_error, bidi_isolation)
+        return _format_message(self._ast, locale, inputs, registry, on_error=on_error, bidi_isolation=bidi_isolation)
 
     @property
     def datamodel(self) -> Node:

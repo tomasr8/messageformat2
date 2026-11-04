@@ -51,7 +51,6 @@ class Fallback:
         return f"{{{self.source}}}"
 
 
-type BidiIsolation = TypingLiteral["default", "none"]
 LRI, RLI, FSI, PDI = "\u2066", "\u2067", "\u2068", "\u2069"
 U_DIR_VALUES = ("ltr", "rtl", "auto", "inherit")
 
@@ -66,7 +65,7 @@ class FormattingContext:
     """The resolved values of the declared variables which have been referenced so far."""
     on_error: Callable[[MessageFormatError], None] | None = None
     """Error sink. If None, the first error is raised; otherwise errors are reported and fallback values used."""
-    bidi_isolation: BidiIsolation = "default"
+    bidi_isolation: bool = False
     """The bidirectional isolation strategy: isolate placeholders with Unicode isolate controls, or not at all."""
 
     @property
@@ -82,13 +81,14 @@ class FormattingContext:
         return fallback
 
 
-def format_message(  # noqa: PLR0913, PLR0917
+def format_message(  # noqa: PLR0913
     message: Message,
     locale: Locale,
     inputs: dict[str, Any],
     registry: Registry,
+    *,
     on_error: Callable[[MessageFormatError], None] | None = None,
-    bidi_isolation: BidiIsolation = "default",
+    bidi_isolation: bool = False,
 ) -> str:
     ctx = FormattingContext(
         locale=locale,
@@ -212,7 +212,7 @@ def bidi_isolate(formatted: FormattedValue, ctx: FormattingContext, *, isolate: 
     A value whose direction matches the message's needs no isolation (unless requested with `u:dir`); a value
     with the opposite direction is wrapped in LRI/RLI, a value of unknown direction in FSI.
     """
-    if ctx.bidi_isolation == "none":
+    if not ctx.bidi_isolation:
         return formatted.text
     if formatted.direction == "ltr":
         if ctx.direction == "ltr" and not isolate:

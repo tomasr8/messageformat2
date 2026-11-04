@@ -189,7 +189,7 @@ def run(test: dict[str, Any], on_error: Any = None) -> str:
         formatters=FORMATTERS,
         selectors=SELECTORS,
         on_error=on_error,
-        bidi_isolation=test.get("bidiIsolation", "none"),
+        bidi_isolation=test.get("bidiIsolation", "none") == "default",
     )
 
 

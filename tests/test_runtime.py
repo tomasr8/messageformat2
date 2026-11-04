@@ -72,7 +72,7 @@ def string_formatter_mutually_exclusive(value: Any, locale: Locale, options: dic
     ],
 )
 def test_parse_simple_message(message, inputs, formatted):
-    assert Message(message).format(inputs, bidi_isolation="none") == formatted
+    assert Message(message).format(inputs) == formatted
 
 
 @pytest.mark.parametrize(
@@ -103,7 +103,7 @@ def test_parse_simple_message(message, inputs, formatted):
     ],
 )
 def test_declarations(message, inputs, formatted):
-    assert Message(message).format(inputs, bidi_isolation="none") == formatted
+    assert Message(message).format(inputs) == formatted
 
 
 @pytest.mark.parametrize(
@@ -137,7 +137,6 @@ def test_annotations(message, inputs, formatted):
             inputs,
             "en",
             formatters={"date": date, "capitalize": capitalize},
-            bidi_isolation="none",
         )
         == formatted
     )
@@ -161,7 +160,6 @@ def test_variable_options(message, inputs, formatted):
             inputs,
             "en",
             formatters={"append": append, "capitalize": capitalize},
-            bidi_isolation="none",
         )
         == formatted
     )
@@ -178,15 +176,15 @@ def test_variable_options(message, inputs, formatted):
     ],
 )
 def test_markup(message, inputs, formatted, xml):
-    assert Message(message).format(inputs, bidi_isolation="none") == formatted
-    assert Message(message).format(inputs, markup=xml_markup, bidi_isolation="none") == xml
+    assert Message(message).format(inputs) == formatted
+    assert Message(message).format(inputs, markup=xml_markup) == xml
 
 
 def test_custom_markup():
     def markup(kind, name, options) -> str:  # noqa: ARG001
         return {"open": "[", "close": "]", "standalone": "|"}[kind]
 
-    assert Message("{#b}bold{/b} {#br/}").format(markup=markup, bidi_isolation="none") == "[bold] |"
+    assert Message("{#b}bold{/b} {#br/}").format(markup=markup) == "[bold] |"
 
 
 @pytest.mark.parametrize(
@@ -230,7 +228,6 @@ def test_selectors(message, inputs, formatted):
             "en",
             formatters={"integer": integer_formatter},
             selectors={"integer": integer_selector},
-            bidi_isolation="none",
         )
         == formatted
     )
@@ -254,7 +251,7 @@ def test_multiple_selectors(inputs, formatted):
 1 * {{count is one}}
 * 1 {{n is one}}
 * * {{neither is one}}"""
-    assert Message(message).format(inputs, "en", bidi_isolation="none") == formatted
+    assert Message(message).format(inputs, "en") == formatted
 
 
 @pytest.mark.parametrize(
@@ -268,7 +265,7 @@ def test_multiple_selectors(inputs, formatted):
     ],
 )
 def test_gotchas(message, inputs, formatted):
-    assert Message(message).format(inputs, "en", bidi_isolation="none") == formatted
+    assert Message(message).format(inputs, "en") == formatted
 
 
 @pytest.mark.parametrize(
@@ -314,9 +311,9 @@ def test_errors(message, inputs, error):
 def test_input_names_are_nfc_normalized():
     nfd = "D\u0323\u0307"
     nfc = "\u1e0c\u0307"
-    assert Message(f"{{${nfd}}}").format({nfc: "foo"}, bidi_isolation="none") == "foo"
-    assert Message(f"{{${nfc}}}").format({nfd: "foo"}, bidi_isolation="none") == "foo"
-    assert Message(f".input {{${nfd}}} {{{{{{${nfc}}}}}}}").format({nfd: "foo"}, bidi_isolation="none") == "foo"
+    assert Message(f"{{${nfd}}}").format({nfc: "foo"}) == "foo"
+    assert Message(f"{{${nfc}}}").format({nfd: "foo"}) == "foo"
+    assert Message(f".input {{${nfd}}} {{{{{{${nfc}}}}}}}").format({nfd: "foo"}) == "foo"
 
 
 def test_reannotation_passes_lazy_value_with_its_options():
@@ -326,7 +323,7 @@ def test_reannotation_passes_lazy_value_with_its_options():
         return f"{value}:{sorted(options.items())}:{sorted(options.literal)}"
 
     message = ".local $x = {42 :fn a=1 b=2} {{{$x :fn b=3 c=$c}}}"
-    out = Message(message).format({"c": 4}, formatters={"fn": fn}, bidi_isolation="none")
+    out = Message(message).format({"c": 4}, formatters={"fn": fn})
     assert out == "fn[42:[('a', '1'), ('b', '2')]]:[('b', '3'), ('c', 4)]:['b']"
 
 
@@ -338,7 +335,7 @@ def test_reannotation_with_different_function_passes_lazy_value():
         return str(value).upper()
 
     message = ".local $name = {alice :string} {{{$name :shout}}}"
-    assert Message(message).format(formatters={"shout": shout}, bidi_isolation="none") == "ALICE"
+    assert Message(message).format(formatters={"shout": shout}) == "ALICE"
 
 
 def test_selector_errors_are_bad_selector_errors():
@@ -368,13 +365,13 @@ def test_selector_errors_are_bad_selector_errors():
     ],
 )
 def test_unannotated_variables_are_formatted_by_type(value, locale, formatted):
-    assert Message("{$x}").format({"x": value}, locale, bidi_isolation="none") == formatted
-    assert Message(".local $y = {$x} {{{$y}}}").format({"x": value}, locale, bidi_isolation="none") == formatted
+    assert Message("{$x}").format({"x": value}, locale) == formatted
+    assert Message(".local $y = {$x} {{{$y}}}").format({"x": value}, locale) == formatted
 
 
 def format_with_errors(message, inputs=None, **kwargs) -> tuple[str, list[type]]:
     errors: list[MessageFormatError] = []
-    formatted = Message(message).format(inputs, "en", on_error=errors.append, bidi_isolation="none", **kwargs)
+    formatted = Message(message).format(inputs, "en", on_error=errors.append, **kwargs)
     return formatted, [type(e) for e in errors]
 
 
@@ -494,21 +491,23 @@ def test_bidi_isolation(message, inputs, locale, formatted):
     def shout(value, locale, options) -> str:  # noqa: ARG001
         return str(value).upper()
 
-    assert Message(message).format(inputs, locale, formatters={"shout": shout}) == formatted
+    assert Message(message).format(inputs, locale, formatters={"shout": shout}, bidi_isolation=True) == formatted
 
 
 def test_bidi_isolation_none():
-    assert Message("Hello, {$name}!").format({"name": "Alice"}, bidi_isolation="none") == "Hello, Alice!"
-    assert Message("hello {world :string u:dir=rtl}").format(bidi_isolation="none") == "hello world"
+    # no isolation by default
+    assert Message("Hello, {$name}!").format({"name": "Alice"}) == "Hello, Alice!"
+    assert Message("hello {world :string u:dir=rtl}").format() == "hello world"
+    assert Message("hello {world :string u:dir=rtl}").format(bidi_isolation=False) == "hello world"
 
 
 def test_custom_formatter_direction():
     def rtl(value, locale, options) -> FormattedValue:  # noqa: ARG001
         return FormattedValue(str(value), "rtl")
 
-    assert Message("{x :rtl}").format(formatters={"rtl": rtl}) == f"{RLI}x{PDI}"
-    assert Message("{x :rtl}").format(None, "ar", formatters={"rtl": rtl}) == f"{RLI}x{PDI}"
-    assert Message("{x :rtl u:dir=ltr}").format(formatters={"rtl": rtl}) == f"{LRI}x{PDI}"
+    assert Message("{x :rtl}").format(formatters={"rtl": rtl}, bidi_isolation=True) == f"{RLI}x{PDI}"
+    assert Message("{x :rtl}").format(None, "ar", formatters={"rtl": rtl}, bidi_isolation=True) == f"{RLI}x{PDI}"
+    assert Message("{x :rtl u:dir=ltr}").format(formatters={"rtl": rtl}, bidi_isolation=True) == f"{LRI}x{PDI}"
 
 
 @pytest.mark.parametrize(
@@ -534,7 +533,7 @@ def test_u_options_are_not_passed_to_the_function():
         return ",".join(sorted(options))
 
     message = "{x :fn a=1 u:dir=ltr u:id=foo u:other=1}"
-    assert Message(message).format(formatters={"fn": fn}, bidi_isolation="none") == "a,u:other"
+    assert Message(message).format(formatters={"fn": fn}) == "a,u:other"
 
 
 def test_declarations_are_resolved_once():
@@ -546,7 +545,7 @@ def test_declarations_are_resolved_once():
 
     message = ".local $x = {$missing :fn} .local $y = {$x :fn} {{{$x} {$y} {$x}}}"
     errors: list[MessageFormatError] = []
-    out = Message(message).format({}, formatters={"fn": fn}, on_error=errors.append, bidi_isolation="none")
+    out = Message(message).format({}, formatters={"fn": fn}, on_error=errors.append)
     assert out == "{$x} {$y} {$x}"
     # the unresolved variable is reported once, not once per reference
     assert [type(e) for e in errors] == [UnresolvedVariable]
