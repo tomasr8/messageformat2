@@ -1,4 +1,5 @@
 import re
+import unicodedata
 
 from messageformat2.datamodel import (
     Attribute,
@@ -270,7 +271,9 @@ def parse_key(queue: Queue) -> Literal | CatchallKey:
     if queue.peek() == "*":
         queue.pop()
         return CatchallKey(value=None)
-    return parse_literal(queue)
+    # The value of each literal key is treated as if it were in NFC
+    literal = parse_literal(queue)
+    return Literal(value=unicodedata.normalize("NFC", literal.value))
 
 
 def parse_pattern(queue: Queue) -> Pattern:
@@ -401,7 +404,8 @@ def parse_name(queue: Queue) -> str:
         name += queue.pop()
     if queue.matches(bidi):
         queue.pop()
-    return name
+    # Names are compared after NFC normalization
+    return unicodedata.normalize("NFC", name)
 
 
 def parse_function_annotation(queue: Queue) -> FunctionAnnotation:

@@ -265,3 +265,11 @@ def test_simple_message_cannot_start_with_period(message):
 def test_errors(message, inputs, error):
     with pytest.raises(error):
         Message(message).format(inputs, formatters={"string": string_formatter_mutually_exclusive})
+
+
+def test_input_names_are_nfc_normalized():
+    nfd = "D\u0323\u0307"
+    nfc = "\u1e0c\u0307"
+    assert Message(f"{{${nfd}}}").format({nfc: "foo"}) == "foo"
+    assert Message(f"{{${nfc}}}").format({nfd: "foo"}) == "foo"
+    assert Message(f".input {{${nfd}}} {{{{{{${nfc}}}}}}}").format({nfd: "foo"}) == "foo"

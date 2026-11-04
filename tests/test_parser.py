@@ -9,6 +9,7 @@ from messageformat2.datamodel import (
     LiteralExpression,
     LocalDeclaration,
     PatternMessage,
+    SelectMessage,
     VariableExpression,
     VariableRef,
 )
@@ -319,3 +320,20 @@ def test_bidi_marks_are_not_allowed_inside_names(message):
 def test_removed_syntax_is_a_syntax_error(message):
     with pytest.raises(ParseError):
         parse(message)
+
+
+def test_names_are_nfc_normalized():
+    # Ḍ̇ written as NFD vs NFC: both refer to the same variable
+    nfd = "D\u0323\u0307"
+    nfc = "\u1e0c\u0307"
+    ast = parse(f".local ${nfd} = {{foo}} {{{{{{${nfc}}}}}}}")
+    assert isinstance(ast, PatternMessage)
+    assert isinstance(ast.declarations[0], LocalDeclaration)
+    assert ast.declarations[0].name == nfc
+    assert ast.pattern == [VariableExpression(arg=VariableRef(name=nfc), annotation=None, attributes=[])]
+
+
+def test_keys_are_nfc_normalized():
+    ast = parse(".local $x = {foo :string} .match $x D\u0323\u0307 {{NFD}} * {{other}}")
+    assert isinstance(ast, SelectMessage)
+    assert ast.variants[0].keys == [Literal(value="\u1e0c\u0307")]

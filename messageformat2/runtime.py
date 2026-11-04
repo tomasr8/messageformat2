@@ -1,3 +1,4 @@
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
@@ -266,5 +267,9 @@ def resolve_variable(name: str, ctx: FormattingContext) -> Any:
 def resolve_global(name: str, ctx: FormattingContext) -> Any:
     if name in ctx.inputs:
         return ctx.inputs[name]
+    # Variable names are compared after NFC normalization; `name` is already normalized by the parser
+    for key, value in ctx.inputs.items():
+        if unicodedata.normalize("NFC", key) == name:
+            return value
     msg = f"Unresolved variable: {name}"
     raise UnresolvedVariable(msg)
