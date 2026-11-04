@@ -1,16 +1,17 @@
 The default function registry includes these functions
 
-in line with the specification in the CLDR 45 technical preview
+in line with the [specification](https://github.com/unicode-org/message-format-wg/tree/main/spec/functions)
 
 ### `:string`
 
 #### Formatter
 
-As a formatter, this functions simply call `str(value)`
+As a formatter, this function simply calls `str(value)`.
 
 #### Selector
 
-As a selector, this function simply selects the exact match among the variant keys
+As a selector, this function selects the exact match among the variant keys
+(after NFC normalization of the value).
 
 ```python
 format_message("""\
@@ -25,28 +26,33 @@ cat {{I have a cat}}
 
 ### `:number`
 
+The operand must be an `int`, `float` or `Decimal` (but not a `bool`), or a string matching the
+`number-literal` production of the spec (e.g. `|-1234.5|`, `|1e3|`; `|01|` or `|.5|` are not numbers).
+The resolved value of another numeric function (`:number`, `:integer`) is also accepted, in which
+case its options are inherited, with the options of the expression taking priority.
+
 #### Formatter
 
-- `compactDisplay`
-    - short (default)
-    - long
-- notation
-    - standard
-    - scientific
-    - engineering (not implemented)
-    - compact
-- `numberingSystem`
-    valid Unicode Number System Identifier (default is locale-specific)
-- `signDisplay` (not implemented)
-- `style`
-    - decimal (default)
-    - percent
+- `signDisplay`
+    - auto (default)
+    - always
+    - exceptZero
+    - negative
+    - never
 - `useGrouping`
     - auto (default)
     - always
-    - min2
-- `minimumFractionDigits` (not implemented)
-- `maximumFractionDigits` (not implemented)
+    - never
+    - min2 (treated as auto)
+- `minimumIntegerDigits`
+- `minimumFractionDigits`
+- `maximumFractionDigits`
+- `minimumSignificantDigits`
+- `maximumSignificantDigits`
+- `numberingSystem` (implementation extension): a Unicode Number System Identifier
+
+The digit options are *digit size options*: small non-negative integers (`0`-`99`).
+Not implemented: `trailingZeroDisplay`, `roundingPriority`, `roundingIncrement`, `roundingMode` (these are ignored).
 
 #### Selector
 
@@ -57,35 +63,14 @@ The selector takes the same options as the formatter in addition to:
     - ordinal
     - exact
 
-The selector does exact string comparison with the variant keys but also keyword comparisons.
+`select` must be set by a literal. The selector first tries an exact match between the number and
+numeric keys (e.g. `1`), then (unless `select=exact`) matches the CLDR plural or ordinal category of the number
+(`zero`, `one`, `two`, `few`, `many`, `other`). Any other key is a `BadVariantKey` error.
 
 ### `:integer`
 
-#### Formatter
-
-- `numberingSystem`
-    valid Unicode Number System Identifier (default is locale-specific)
-- `signDisplay` (not implemented)
-- `style`
-    - decimal (default)
-    - percent
-- `useGrouping`
-    - auto (default)
-    - always
-    - min2
-- `minimumIntegerDigits` (not implemented)
-- `maximumSignificantDigits` (not implemented)
-
-#### Selector
-
-The selector takes the same options as the formatter in addition to:
-
-- `select`
-    - plural (default)
-    - ordinal
-    - exact
-
-The selector does exact string comparison with the variant keys but also keyword comparisons.
+Same as `:number`, but the operand is truncated to an integer. The `minimumFractionDigits`, `maximumFractionDigits`
+and `minimumSignificantDigits` options of an annotated operand are discarded.
 
 ### `:datetime`
 

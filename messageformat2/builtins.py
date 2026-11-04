@@ -1,6 +1,9 @@
+import copy
 import datetime as _datetime
+import re
 import unicodedata
 from dataclasses import dataclass, field
+from decimal import ROUND_DOWN, ROUND_HALF_EVEN, Context, Decimal
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
 from babel import Locale
@@ -8,9 +11,16 @@ from babel.dates import format_date as _format_date
 from babel.dates import format_datetime as _format_datetime
 from babel.dates import format_time as _format_time
 from babel.dates import match_skeleton
-from babel.numbers import format_compact_decimal, format_decimal, format_percent, format_scientific
+from babel.numbers import get_minus_sign_symbol, get_plus_sign_symbol, parse_pattern
 
-from messageformat2.errors import BadOperand, BadOption, BadSelector, MessageFunctionError, UnknownFunction
+from messageformat2.errors import (
+    BadOperand,
+    BadOption,
+    BadSelector,
+    BadVariantKey,
+    MessageFunctionError,
+    UnknownFunction,
+)
 
 
 if TYPE_CHECKING:
@@ -100,11 +110,30 @@ def format_skeleton(
 
 
 class Formatter(Protocol):
-    def __call__(self, value: Any, locale: Locale, options: dict[str, Any]) -> Any: ...
+    def __call__(self, value: Any, locale: Locale, options: ResolvedOptions) -> Any: ...
 
 
 class Selector(Protocol):
-    def __call__(self, value: Any, locale: Locale, options: dict[str, Any], keys: list[str]) -> list[str]: ...
+    def __call__(self, value: Any, locale: Locale, options: ResolvedOptions, keys: list[str]) -> list[str]: ...
+
+
+NUMBER_LITERAL = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?$")
+"""The `number-literal` production: the only strings accepted as numeric operands."""
+DIGIT_SIZE_OPTION = re.compile(r"^(?:0|[1-9][0-9]?)$")
+PLURAL_KEYWORDS = frozenset({"zero", "one", "two", "few", "many", "other"})
+NUMERIC_FUNCTIONS = frozenset({"number", "integer"})
+SIGN_DISPLAY = frozenset({"auto", "always", "exceptZero", "negative", "never"})
+USE_GROUPING = frozenset({"auto", "always", "never", "min2"})
+SELECT = frozenset({"plural", "ordinal", "exact"})
+# Options of an operand which are discarded by `:integer`
+INTEGER_DISCARDED_OPTIONS = ("minimumFractionDigits", "maximumFractionDigits", "minimumSignificantDigits")
+# Options which affect the serialization of integers for exact matching
+EXACT_MATCH_OPTIONS = (
+    "minimumFractionDigits",
+    "minimumIntegerDigits",
+    "minimumSignificantDigits",
+    "maximumSignificantDigits",
+)
 
 
 class MarkupFormatter(Protocol):
@@ -138,109 +167,179 @@ def string_selector(value: Any, locale: Locale, options: dict[str, Any], keys: l
     return [string] if string in keys else []
 
 
-def format_number(  # noqa: PLR0913
-    number: Any,
-    *,
-    locale: Locale,
-    compactDisplay: Literal["short", "long"] = "short",
-    notation: Literal["standard", "scientific", "engineering", "compact"] = "standard",
-    numberingSystem: str = "default",
-    signDisplay: Literal["auto", "always", "exceptZero", "negative", "never"] = "auto",  # noqa: ARG001
-    style: Literal["decimal", "percent"] = "decimal",
-    useGrouping: Literal["auto", "always", "never", "min2"] = "auto",
-    minimumFractionDigits: int | None = None,  # noqa: ARG001
-    maximumFractionDigits: int | None = None,  # noqa: ARG001
-    **kwargs,  # noqa: ARG001
-) -> str:
-    if notation == "compact":
-        # fraction_digits =
-        return format_compact_decimal(
-            number, format_type=compactDisplay, locale=locale, numbering_system=numberingSystem
-        )
-    if notation in ("scientific", "engineering"):
-        # babel has 'format_engineering' method..
-        return format_scientific(number, locale=locale, numbering_system=numberingSystem)
-    group_separator = useGrouping != "never"
-    if style == "percent":
-        return format_percent(
-            number,
-            locale=locale,
-            group_separator=group_separator,
-            numbering_system=numberingSystem,
-        )
-    return format_decimal(number, locale=locale, group_separator=group_separator, numbering_system=numberingSystem)
+def to_decimal(value: Any) -> Decimal:
+    """Convert a numeric operand to a Decimal, raising BadOperand for anything which is not a number."""
+    if isinstance(value, bool):
+        msg = f"Bad operand: {value!r} is not a number"
+        raise BadOperand(msg)
+    if isinstance(value, (int, Decimal)):
+        return Decimal(value)
+    if isinstance(value, float):
+        return Decimal(str(value))
+    if isinstance(value, str) and NUMBER_LITERAL.match(value):
+        return Decimal(value)
+    msg = f"Bad operand: {value!r} is not a number"
+    raise BadOperand(msg)
 
 
-def keyword_selector(
-    number: float, *, locale: Locale, keys: list[str], select: Literal["exact", "plural", "ordinal"] = "plural"
-) -> list[str]:
+def digit_size_option(options: dict[str, Any], name: str) -> int | None:
+    """Return the value of a digit size option (a small non-negative integer), or None if not set."""
+    if (value := options.get(name)) is None:
+        return None
+    if isinstance(value, bool) or (not isinstance(value, int) and not DIGIT_SIZE_OPTION.match(str(value))):
+        msg = f"Bad option: {name}={value!r} is not a digit size option"
+        raise BadOption(msg)
+    return int(value)
+
+
+def choice_option(options: dict[str, Any], name: str, choices: frozenset[str], default: str) -> str:
+    value = options.get(name, default)
+    if value not in choices:
+        msg = f"Bad option: {name}={value!r} is not one of {sorted(choices)}"
+        raise BadOption(msg)
+    return value
+
+
+def numeric_operand(value: Any, options: ResolvedOptions, fn_name: str) -> tuple[Decimal, ResolvedOptions]:
+    """Resolve the operand of a numeric function.
+
+    The operand is either a number, a string matching `number-literal`, or the resolved value of another
+    numeric function whose options are inherited (with the options of the expression taking priority).
+    """
+    if isinstance(value, LazyValue):
+        if value.fn_name not in NUMERIC_FUNCTIONS:
+            msg = f"Bad operand: the resolved value of :{value.fn_name} cannot be used as a numeric operand"
+            raise BadOperand(msg)
+        number, inherited = numeric_value(value)
+        if fn_name == "integer":
+            inherited = ResolvedOptions({k: v for k, v in inherited.items() if k not in INTEGER_DISCARDED_OPTIONS})
+        # options inherited from the operand were not set by a literal in *this* expression
+        return number, ResolvedOptions({**inherited, **options}, literal=options.literal)
+    return to_decimal(value), options
+
+
+def numeric_value(lazy: LazyValue) -> tuple[Decimal, ResolvedOptions]:
+    """Return the numeric value and the resolved options of a value annotated with a numeric function."""
+    number, options = numeric_operand(lazy.value, lazy.options, lazy.fn_name)
+    if lazy.fn_name == "integer":
+        number = number.to_integral_value(rounding=ROUND_DOWN)
+    return number, options
+
+
+def _integer_digits(number: Decimal) -> int:
+    return max(number.adjusted() + 1, 1) if number != 0 else 1
+
+
+def check_select_option(options: ResolvedOptions) -> str:
+    """Validate the `select` option, which must be set by a literal in the expression itself."""
+    if "select" in options and "select" not in options.literal:
+        msg = "Bad option: the 'select' option must be set by a literal"
+        raise BadOption(msg)
+    return choice_option(options, "select", SELECT, "plural")
+
+
+def format_numeric(number: Decimal, locale: Locale, options: ResolvedOptions) -> str:
+    """Format a number according to the `:number`/`:integer` options."""
+    check_select_option(options)
+    sign_display = choice_option(options, "signDisplay", SIGN_DISPLAY, "auto")
+    use_grouping = choice_option(options, "useGrouping", USE_GROUPING, "auto")
+    numbering_system = options.get("numberingSystem", "default")
+    min_int = digit_size_option(options, "minimumIntegerDigits")
+    min_frac = digit_size_option(options, "minimumFractionDigits")
+    max_frac = digit_size_option(options, "maximumFractionDigits")
+    min_sig = digit_size_option(options, "minimumSignificantDigits")
+    max_sig = digit_size_option(options, "maximumSignificantDigits")
+
+    if max_sig is not None:
+        number = Context(prec=max(max_sig, 1), rounding=ROUND_HALF_EVEN).create_decimal(number)
+
+    pattern = copy.copy(parse_pattern(locale.decimal_formats[None]))
+    frac_min, frac_max = pattern.frac_prec
+    if min_frac is not None:
+        frac_min = min_frac
+        frac_max = max(frac_max, min_frac)
+    if max_frac is not None:
+        frac_max = max_frac
+        frac_min = min(frac_min, max_frac)
+    if min_sig is not None:
+        needed = max(min_sig - _integer_digits(number), 0)
+        frac_min, frac_max = max(frac_min, needed), max(frac_max, needed)
+    pattern.frac_prec = (frac_min, frac_max)
+    if min_int is not None:
+        pattern.int_prec = (max(min_int, 1), pattern.int_prec[1])
+
+    formatted = pattern.apply(
+        abs(number), locale, group_separator=use_grouping != "never", numbering_system=numbering_system
+    )
+    negative = number.is_signed()
+    show_sign = {
+        "auto": negative,
+        "always": True,
+        "exceptZero": number != 0,
+        "negative": number < 0,
+        "never": False,
+    }[sign_display]
+    if not show_sign:
+        return formatted
+    if negative:
+        return get_minus_sign_symbol(locale, numbering_system=numbering_system) + formatted
+    return get_plus_sign_symbol(locale, numbering_system=numbering_system) + formatted
+
+
+def select_numeric(number: Decimal, locale: Locale, options: ResolvedOptions, keys: list[str]) -> list[str]:
+    """Return the matching keys for a number, best match first: an exact match, then a plural/ordinal keyword."""
+    select = check_select_option(options)
+
+    min_frac = digit_size_option(options, "minimumFractionDigits")
+    if min_frac is not None and -number.as_tuple().exponent < min_frac:  # type: ignore[operator]  # ty: ignore[unsupported-operator]
+        number = number.quantize(Decimal(10) ** -min_frac)
+
+    if number == number.to_integral_value() and not any(options.get(name) for name in EXACT_MATCH_OPTIONS):
+        exact = str(int(number))
+    else:
+        exact = format(number, "f")
+
+    keyword = None
     if select == "plural":
         keyword = locale.plural_form(number)
     elif select == "ordinal":
         keyword = locale.ordinal_form(number)
-    else:
-        msg = f"Unknown select type: {select}"
-        raise BadOption(msg)
 
-    return [keyword] if keyword in keys else []
-
-
-def number_formatter(value: Any, locale: Locale, options: dict[str, Any]) -> str:
-    return format_number(value, locale=locale, **options)
-
-
-def number_selector(value: Any, locale: Locale, options: dict[str, Any], keys: list[str]) -> list[str]:
-    select = options.get("select", "plural")
-    number = format_number(value, locale=locale, **options)
-
-    exact_keys = [number] if number in keys else []
-    if select == "exact":
-        return exact_keys
-    keyword_keys = keyword_selector(value, locale=locale, keys=keys, select=select)
-    return exact_keys + keyword_keys
+    matches = []
+    for key in keys:
+        if NUMBER_LITERAL.match(key):
+            if key == exact:
+                matches.insert(0, key)
+        elif key in PLURAL_KEYWORDS:
+            if key == keyword:
+                matches.append(key)
+        else:
+            msg = f"Bad variant key: {key!r} is neither a number nor a plural category"
+            raise BadVariantKey(msg)
+    return matches
 
 
-def format_integer(  # noqa: PLR0913
-    value: Any,
-    *,
-    locale: Locale,
-    numberingSystem: str = "default",
-    signDisplay: Literal["auto", "always", "exceptZero", "negative", "never"] = "auto",  # noqa: ARG001
-    style: Literal["decimal", "percent"] = "decimal",
-    useGrouping: Literal["auto", "always", "min2"] = "auto",  # noqa: ARG001
-    minimumIntegerDigits: int | None = 1,  # noqa: ARG001
-    maximumSignificantDigits: int | None = None,  # noqa: ARG001
-    **kwargs,  # noqa: ARG001
-) -> str:
-    if style == "percent":
-        return format_percent(
-            value,
-            locale=locale,
-            numbering_system=numberingSystem,
-        )
-    if style == "decimal":
-        return format_decimal(
-            value,
-            locale=locale,
-            numbering_system=numberingSystem,
-        )
-    msg = f"Unknown style: {style}"
-    raise BadOption(msg)
+def number_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
+    number, options = numeric_operand(value, options, "number")
+    return format_numeric(number, locale, options)
 
 
-def integer_formatter(value: Any, locale: Locale, options: dict[str, Any]) -> str:  # noqa: ARG001
-    return str(int(value))
+def number_selector(value: Any, locale: Locale, options: ResolvedOptions, keys: list[str]) -> list[str]:
+    number, options = numeric_operand(value, options, "number")
+    return select_numeric(number, locale, options, keys)
 
 
-def integer_selector(value: Any, locale: Locale, options: dict[str, Any], keys: list[str]) -> list[str]:
-    select = options.get("select", "plural")
-    integer = format_integer(value, locale=locale, **options)
+def integer_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
+    number, options = numeric_operand(value, options, "integer")
+    number = number.to_integral_value(rounding=ROUND_DOWN)
+    options = ResolvedOptions({**options, "maximumFractionDigits": 0}, literal=options.literal)
+    return format_numeric(number, locale, options)
 
-    exact_keys = [integer] if integer in keys else []
-    if select == "exact":
-        return exact_keys
-    keyword_keys = keyword_selector(value, locale=locale, keys=keys, select=select)
-    return exact_keys + keyword_keys
+
+def integer_selector(value: Any, locale: Locale, options: ResolvedOptions, keys: list[str]) -> list[str]:
+    number, options = numeric_operand(value, options, "integer")
+    number = number.to_integral_value(rounding=ROUND_DOWN)
+    return select_numeric(number, locale, options, keys)
 
 
 def format_datetime(  # noqa: PLR0913, PLR0915, PLR0917
