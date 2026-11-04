@@ -2,7 +2,7 @@
 
 Errors might be raised during parsing or during formatting. You can learn more
 about MF2 errors
-[here](https://www.unicode.org/reports/tr35/tr35-72/tr35-messageFormat.html#error-handling).
+[here](https://github.com/unicode-org/message-format-wg/blob/main/spec/errors.md).
 
 During parsing the following exceptions (or their subclasses) might be raised:
 

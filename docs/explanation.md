@@ -48,7 +48,7 @@ handle such operands in your own functions.
 
 ## Whitespace
 
-This library implements the [grammar](https://www.unicode.org/reports/tr35/tr35-72/tr35-messageFormat.html#complete-abnf) exactly as specified which includes whitespace.
+This library implements the [grammar](https://github.com/unicode-org/message-format-wg/blob/main/spec/message.abnf) exactly as specified which includes whitespace.
 
 Whitespace around a complex message (a message containing declarations and/or a match block) is not significant,
 so complex messages can be freely indented, e.g. in multiline strings:
