@@ -101,3 +101,17 @@ format_message(
 )
 # -> "ALICE"
 ```
+
+## Directionality
+
+The result of a custom formatter has an unknown direction and is isolated with U+2068/U+2069 when the message
+is formatted with the default bidi strategy (see [Bidirectional text](../explanation.md#bidirectional-text)).
+Return a `FormattedValue` to declare the direction instead, so that a value in the direction of the message
+is not isolated:
+
+```python
+from messageformat2.builtins import FormattedValue
+
+def shout(value, locale, options) -> FormattedValue:
+    return FormattedValue(str(value).upper(), locale.text_direction)
+```

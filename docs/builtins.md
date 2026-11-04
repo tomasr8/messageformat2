@@ -192,3 +192,13 @@ The option values below must be set by literals (an option set by a variable is 
 #### Selector
 
 The date/time functions do not support selection, as it is not required by MF2.
+
+## The `u:` namespace options
+
+These options can be used with any function (including custom ones):
+
+- `u:dir`: `ltr`, `rtl`, `auto` or `inherit` (default). Sets the directionality of the placeholder for the
+  bidi isolation strategy and forces its isolation (except `inherit`). Not allowed on markup.
+- `u:id`: an identifier for the placeholder; accepted (it must be a string) but ignored when formatting to a string.
+
+Both are removed from the options before the function is called.

@@ -4,10 +4,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
+from typing import Literal as TypingLiteral
 
 from babel import Locale
 
-from messageformat2.builtins import LazyValue, Registry, ResolvedOptions
+from messageformat2.builtins import Direction, FormattedValue, LazyValue, Registry, ResolvedOptions
 from messageformat2.errors import (
     BadOption,
     BadSelector,
@@ -50,6 +51,11 @@ class Fallback:
         return f"{{{self.source}}}"
 
 
+type BidiIsolation = TypingLiteral["default", "none"]
+LRI, RLI, FSI, PDI = "\u2066", "\u2067", "\u2068", "\u2069"
+U_DIR_VALUES = ("ltr", "rtl", "auto", "inherit")
+
+
 @dataclass
 class FormattingContext:
     locale: Locale
@@ -58,6 +64,13 @@ class FormattingContext:
     declarations: dict[str, Any]
     on_error: Callable[[MessageFormatError], None] | None = None
     """Error sink. If None, the first error is raised; otherwise errors are reported and fallback values used."""
+    bidi_isolation: BidiIsolation = "default"
+    """The bidirectional isolation strategy: isolate placeholders with Unicode isolate controls, or not at all."""
+
+    @property
+    def direction(self) -> Direction:
+        """The directionality of the message as a whole, taken from the locale."""
+        return self.locale.text_direction  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
 
     def emit[T](self, error: MessageFormatError, fallback: T) -> T:
         """Report an error: raise it in strict mode, otherwise pass it to `on_error` and return `fallback`."""
@@ -67,12 +80,13 @@ class FormattingContext:
         return fallback
 
 
-def format_message(
+def format_message(  # noqa: PLR0913, PLR0917
     message: Message,
     locale: Locale,
     inputs: dict[str, Any],
     registry: Registry,
     on_error: Callable[[MessageFormatError], None] | None = None,
+    bidi_isolation: BidiIsolation = "default",
 ) -> str:
     ctx = FormattingContext(
         locale=locale,
@@ -80,6 +94,7 @@ def format_message(
         registry=registry,
         declarations={},
         on_error=on_error,
+        bidi_isolation=bidi_isolation,
     )
     match message:
         case PatternMessage():
@@ -181,12 +196,32 @@ def format_expression(expression: Expression, ctx: FormattingContext) -> str:
     match expression:
         case VariableExpression(annotation=None):
             resolved = apply_default_function(resolved, ctx)
-    if isinstance(resolved, LazyValue):
-        try:
-            return resolved.format()
-        except MessageFormatError as e:
-            resolved = ctx.emit(e, Fallback(expression_source(expression)))
-    return str(resolved)
+    if not isinstance(resolved, LazyValue):
+        # literals, unannotated input values and fallback values have an unknown direction
+        return bidi_isolate(FormattedValue(str(resolved)), ctx, isolate=False)
+    try:
+        formatted = resolved.formatted()
+    except MessageFormatError as e:
+        formatted = FormattedValue(str(ctx.emit(e, Fallback(expression_source(expression)))))
+    # `u:dir` (other than `inherit`) requests isolation even when the directions match
+    return bidi_isolate(formatted, ctx, isolate=resolved.u_dir is not None)
+
+
+def bidi_isolate(formatted: FormattedValue, ctx: FormattingContext, *, isolate: bool) -> str:
+    """Apply the Default Bidi Strategy: wrap a formatted placeholder in Unicode isolate controls.
+
+    A value whose direction matches the message's needs no isolation (unless requested with `u:dir`); a value
+    with the opposite direction is wrapped in LRI/RLI, a value of unknown direction in FSI.
+    """
+    if ctx.bidi_isolation == "none":
+        return formatted.text
+    if formatted.direction == "ltr":
+        if ctx.direction == "ltr" and not isolate:
+            return formatted.text
+        return LRI + formatted.text + PDI
+    if formatted.direction == "rtl":
+        return RLI + formatted.text + PDI
+    return FSI + formatted.text + PDI
 
 
 def expression_source(expression: Expression) -> str:
@@ -223,6 +258,7 @@ def apply_default_function(resolved: Any, ctx: FormattingContext) -> Any:
 def format_markup(markup: Markup, ctx: FormattingContext) -> str:
     # Markup resolution always succeeds: errors from option resolution are reported but non-fatal
     options = resolve_options(markup.options, ctx)
+    process_u_options(options, ctx, markup=True)
     # When formatting to a string, the default representation of all markup is an empty string
     if ctx.registry.markup is None:
         return ""
@@ -268,7 +304,35 @@ def annotate(resolved: Any, fn_name: str, options: ResolvedOptions, source: str,
         return ctx.emit(UnknownFunction(msg), Fallback(source))
     if isinstance(resolved, Fallback):
         return Fallback(source)
-    return LazyValue(fn_name=fn_name, value=resolved, options=options, ctx=ctx)
+    u_dir = process_u_options(options, ctx, markup=False)
+    return LazyValue(fn_name=fn_name, value=resolved, options=options, ctx=ctx, u_dir=u_dir)
+
+
+def process_u_options(
+    options: ResolvedOptions, ctx: FormattingContext, *, markup: bool
+) -> TypingLiteral["ltr", "rtl", "auto"] | None:
+    """Process and remove the `u:` namespace options, which apply to all functions and markup.
+
+    `u:dir` sets the directionality of the expression's value (and requests its isolation); it is not allowed
+    on markup. `u:id` is validated but has no effect when formatting to a string. Returns the `u:dir` value.
+    """
+    u_dir = None
+    if "u:dir" in options:
+        value = options.pop("u:dir")
+        if markup:
+            msg = "Bad option: u:dir is not allowed on markup"
+            ctx.emit(BadOption(msg), None)
+        elif value not in U_DIR_VALUES:
+            msg = f"Bad option: u:dir={value!r} is not one of {list(U_DIR_VALUES)}"
+            ctx.emit(BadOption(msg), None)
+        elif value != "inherit":
+            u_dir = value
+    if "u:id" in options:
+        value = options.pop("u:id")
+        if not isinstance(value, str):
+            msg = f"Bad option: u:id={value!r} is not a string"
+            ctx.emit(BadOption(msg), None)
+    return u_dir
 
 
 def resolve_expression(expression: Expression, ctx: FormattingContext) -> Any | LazyValue:

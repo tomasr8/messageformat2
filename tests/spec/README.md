@@ -14,5 +14,4 @@ cp /tmp/mfwg/test/tests/functions/*.json tests/spec/functions/
 
 and update the commit hash above.
 
-Tests tagged with optional features which are not implemented
-(`u:dir`, `u:id`) are skipped, see `tests/test_spec.py`.
+All tests are run, in strict mode and with an `on_error` handler (see `tests/test_spec.py`).

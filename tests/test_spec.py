@@ -56,10 +56,7 @@ ERRORS = {
 }
 
 # Optional features (test "tags") which are not implemented
-UNSUPPORTED_TAGS = {"u:dir", "u:id"}
-
-# Bidi isolation of placeholders is not implemented: tests expecting it are compared without the isolates
-BIDI_ISOLATES = re.compile("[" + chr(0x2066) + "-" + chr(0x2069) + "]")
+UNSUPPORTED_TAGS: set[str] = set()
 
 NUMBER_LITERAL = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?$")
 
@@ -186,14 +183,18 @@ def run(test: dict[str, Any], on_error: Any = None) -> str:
         if param.get("type") == "datetime":
             value = dt.datetime.fromisoformat(value)
         inputs[param["name"]] = value
-    return Message(test["src"]).format(inputs, locale, formatters=FORMATTERS, selectors=SELECTORS, on_error=on_error)
+    return Message(test["src"]).format(
+        inputs,
+        locale,
+        formatters=FORMATTERS,
+        selectors=SELECTORS,
+        on_error=on_error,
+        bidi_isolation=test.get("bidiIsolation", "none"),
+    )
 
 
 def expected_output(test: dict[str, Any]) -> str | None:
-    expected = test.get("exp")
-    if expected is not None and test.get("bidiIsolation") == "default":
-        expected = BIDI_ISOLATES.sub("", expected)
-    return expected
+    return test.get("exp")
 
 
 @pytest.mark.parametrize("test", load_tests())

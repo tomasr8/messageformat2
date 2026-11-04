@@ -1,9 +1,10 @@
 import copy
 import datetime as dt
+import functools
 import re
 import unicodedata
 import zoneinfo
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import (
     ROUND_CEILING,
@@ -60,6 +61,37 @@ class ResolvedOptions(dict[str, Any]):
         self.literal = literal
 
 
+type Direction = Literal["ltr", "rtl"] | None
+"""The directionality of a formatted value: left-to-right, right-to-left or None when unknown."""
+
+
+@dataclass(frozen=True)
+class FormattedValue:
+    """The result of a formatter: the formatted text and its directionality.
+
+    Formatters can return a plain string (whose directionality is unknown) or a `FormattedValue`.
+    The built-in number and date/time formatters return values with the directionality of the locale.
+    The directionality is used by the default bidi isolation strategy (see `Message.format()`).
+    """
+
+    text: str
+    direction: Direction = None
+
+    def __str__(self) -> str:
+        return self.text
+
+
+def locale_direction[**P](formatter: Callable[P, str]) -> Callable[P, FormattedValue]:
+    """Make a formatter return a `FormattedValue` with the directionality of the locale."""
+
+    @functools.wraps(formatter)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> FormattedValue:
+        locale = kwargs["locale"] if "locale" in kwargs else args[1]
+        return FormattedValue(formatter(*args, **kwargs), locale.text_direction)  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
+
+    return wrapper
+
+
 class LazyValue:
     """The resolved value of an expression with a function.
 
@@ -68,28 +100,48 @@ class LazyValue:
     is annotated again, e.g. `$y` in `.local $x = {42 :integer} .local $y = {$x :number}`. The function
     handler can then inspect `fn_name`, `value` and `options` of the operand (`str(operand)` gives its
     formatted value).
+
+    `u_dir` is the value of the `u:dir` option of the expression, if any (it is not passed to the function).
     """
 
-    def __init__(self, *, fn_name: str, value: Any, options: ResolvedOptions | None, ctx: "FormattingContext") -> None:
+    def __init__(
+        self,
+        *,
+        fn_name: str,
+        value: Any,
+        options: ResolvedOptions | None,
+        ctx: "FormattingContext",
+        u_dir: Literal["ltr", "rtl", "auto"] | None = None,
+    ) -> None:
         self.fn_name = fn_name
         self.value = value
         self.options = options if options is not None else ResolvedOptions()
+        self.u_dir = u_dir
         self._ctx = ctx
 
     def format(self) -> str:
+        return self.formatted().text
+
+    def formatted(self) -> FormattedValue:
+        """Call the formatter and return the formatted text with its directionality."""
         ctx = self._ctx
         if formatter := ctx.registry.formatters.get(self.fn_name):
             try:
-                return str(formatter(value=self.value, locale=ctx.locale, options=self.options))
+                result = formatter(value=self.value, locale=ctx.locale, options=self.options)
             except MessageFunctionError as e:
-                if e.result is not None and ctx.on_error is not None:
-                    # a non-fatal error: report it and use the result the function produced anyway
-                    ctx.on_error(e)
-                    return str(e.result)
-                raise
+                if e.result is None or ctx.on_error is None:
+                    raise
+                # a non-fatal error: report it and use the result the function produced anyway
+                ctx.on_error(e)
+                result = e.result
             except Exception as e:
                 msg = f"Exception raised while evaluating formatter :{self.fn_name}"
                 raise MessageFunctionError(msg) from e
+            formatted = result if isinstance(result, FormattedValue) else FormattedValue(str(result))
+            if self.u_dir is not None:
+                # `u:dir` overrides the directionality of the value (`auto` means "unknown, isolate")
+                return FormattedValue(formatted.text, None if self.u_dir == "auto" else self.u_dir)
+            return formatted
         if self.fn_name in ctx.registry.selectors:
             msg = f"Function :{self.fn_name} does not support formatting"
             raise MessageFunctionError(msg)
@@ -559,6 +611,7 @@ def select_numeric(
     return matches
 
 
+@locale_direction
 def number_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
     number, options = numeric_operand(value, options, "number")
     return format_numeric(number, locale, options)
@@ -569,6 +622,7 @@ def number_selector(value: Any, locale: Locale, options: ResolvedOptions, keys: 
     return select_numeric(number, locale, options, keys)
 
 
+@locale_direction
 def integer_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
     number, options = numeric_operand(value, options, "integer")
     options = ResolvedOptions(
@@ -582,6 +636,7 @@ def integer_selector(value: Any, locale: Locale, options: ResolvedOptions, keys:
     return select_numeric(round_to_integer(number), locale, options, keys)
 
 
+@locale_direction
 def offset_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
     number, options = numeric_operand(value, options, "offset")
     number += offset_delta(options)
@@ -596,6 +651,7 @@ def offset_selector(value: Any, locale: Locale, options: ResolvedOptions, keys: 
     return select_numeric(number, locale, ResolvedOptions(inherited, literal=options.literal), keys)
 
 
+@locale_direction
 def percent_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
     number, options = numeric_operand(value, options, "percent")
     return format_numeric(number * 100, locale, options, percent=True)
@@ -614,6 +670,7 @@ def _strip_trailing_zeros(number: Decimal) -> Decimal:
     return number.normalize()
 
 
+@locale_direction
 def currency_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
     number, currency, options = currency_operand(value, options)
     currency_sign = choice_option(options, "currencySign", CURRENCY_SIGN, "standard") or "standard"
@@ -781,6 +838,7 @@ def _time_pattern(locale: Locale, precision: str, hour12: str | None, time_zone_
     return pattern
 
 
+@locale_direction
 def datetime_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
     operand, options = datetime_operand(value, options)
     if not isinstance(operand, dt.datetime):
@@ -800,6 +858,7 @@ def datetime_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> 
     return _format_datetime(operand, format=combined, locale=locale)
 
 
+@locale_direction
 def date_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
     operand, options = datetime_operand(value, options)
     if not isinstance(operand, dt.date):  # datetime is a subclass of date
@@ -812,6 +871,7 @@ def date_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
     return _format_datetime(operand, format=_date_pattern(locale, fields, length), locale=locale)
 
 
+@locale_direction
 def time_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
     operand, options = datetime_operand(value, options)
     if not isinstance(operand, (dt.datetime, dt.time)):
