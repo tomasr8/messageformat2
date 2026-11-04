@@ -83,26 +83,6 @@ def test_parse_simple_message_escapes(request, snapshot, message):
 @pytest.mark.parametrize(
     "message",
     [
-        "{!reserved}",
-        "{!reserved opt=42}",
-        "{^private}",
-        "{^private |pipe escape: \\| |}",
-        "{^private |backslash escape: \\\\ |}",
-    ],
-    ids=itertools.count(1),
-)
-def test_unsupported_annotations(request, snapshot, message):
-    snapshot.snapshot_dir = Path(__file__).parent / "data"
-    idx = request.node.callspec.id
-
-    ast = parse(message)
-    formatted = ruff_format(repr(ast))
-    snapshot.assert_match(formatted, f"unsupported_annotations_{idx}.txt")
-
-
-@pytest.mark.parametrize(
-    "message",
-    [
         """\
 .input {$date :datetime weekday=long month=medium day=short}
 .local $numPigs = {$pigs :integer}
@@ -125,29 +105,6 @@ def test_parse_complex_message(request, snapshot, message):
     ast = parse(message)
     formatted = ruff_format(repr(ast))
     snapshot.assert_match(formatted, f"complex_message_{idx}.txt")
-
-
-@pytest.mark.parametrize(
-    "message",
-    [
-        """\
-.unknown {$x}
-.match {$count :integer}
-* {{Reserved statement}}""",
-        """\
-.unknown reserved-body |literal| {$x ^private @attr}
-.match {$count :integer}
-* {{Reserved statement}}""",
-    ],
-    ids=itertools.count(1),
-)
-def test_parse_unsupported_statement(request, snapshot, message):
-    snapshot.snapshot_dir = Path(__file__).parent / "data"
-    idx = request.node.callspec.id
-
-    ast = parse(message)
-    formatted = ruff_format(repr(ast))
-    snapshot.assert_match(formatted, f"unsupported_statement_{idx}.txt")
 
 
 @pytest.mark.parametrize(
@@ -293,5 +250,29 @@ def test_bidi_marks_are_allowed_in_whitespace_and_around_names(message):
     ],
 )
 def test_bidi_marks_are_not_allowed_inside_names(message):
+    with pytest.raises(ParseError):
+        parse(message)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        # reserved and private-use annotations were removed from the syntax
+        "{!reserved}",
+        "{^private}",
+        "{$x !reserved}",
+        "{|literal| ~reserved opt=1}",
+        "hello {&private @attr}",
+        "{%}",
+        "{*}",
+        "{<tag}",
+        # reserved statements were removed from the syntax
+        ".unknown {$x} {{Reserved statement}}",
+        ".unknown reserved-body |literal| {$x} .match {$x :string} * {{}}",
+        ".i {1} {{}}",
+        ".l $y = {|bar|} {{}}",
+    ],
+)
+def test_reserved_syntax_is_a_syntax_error(message):
     with pytest.raises(ParseError):
         parse(message)

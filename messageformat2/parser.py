@@ -18,9 +18,6 @@ from messageformat2.datamodel import (
     Pattern,
     PatternMessage,
     SelectMessage,
-    UnsupportedAnnotation,
-    UnsupportedExpression,
-    UnsupportedStatement,
     VariableExpression,
     VariableRef,
     Variant,
@@ -55,8 +52,6 @@ optional_whitespace_char = re.compile(f"^(?:{_whitespace}|{_bidi})")
 # escaped-char = backslash ( backslash / "{" / "|" / "}" )
 # The same escapes are valid in text and in quoted literals.
 escaped_char = re.compile(r"^\\[\\{|}]")
-_reserved_escape = r"^\\[\\{|}]"
-reserved_escape = re.compile(f"^{_reserved_escape}")
 
 # simple-start-char: text-char except whitespace and "."
 # (the escapes are left to `re` so that U+002D is a literal "-" rather than a range operator)
@@ -67,21 +62,14 @@ simple_start_char = re.compile(
 text_char = re.compile(r"^[\u0001-\u005b\u005d-\u007a\u007c\u007e-\U0010ffff]")
 # quoted-char: any code point except NULL, "\" and "|"
 quoted_char = re.compile(r"^[\u0001-\u005b\u005d-\u007b\u007d-\U0010ffff]")
-# reserved-char: any code point except NULL, whitespace, "@", "\", "{", "|" and "}"
-_reserved_char = (
-    r"[\u0001-\u0008\u000b-\u000c\u000e-\u001f\u0021-\u003f\u0041-\u005b\u005d-\u007a\u007e-\u2fff\u3001-\U0010ffff]"
-)
-reserved_char = re.compile(rf"^{_reserved_char}")
 
 markup_start = re.compile(rf"^\{{(?:{_whitespace}|{_bidi})*[#/]")
-annotation_start = re.compile(r"^[:^&!%*+<>?~]")
 input_start = re.compile(r"^\.input")
 local_start = re.compile(r"^\.local")
 match_start = re.compile(r"^\.match")
 quoted_pattern_start = re.compile(r"^\{\{")
 quoted_pattern_end = re.compile(r"^\}\}")
 complex_message_start = re.compile(r"^(?:\.|\{\{)")
-reserved_body_part_start = re.compile(rf"^{_reserved_char}|{_reserved_escape}|\|")
 
 
 class Queue:
@@ -207,7 +195,8 @@ def parse_declaration(queue: Queue) -> Declaration:
         return parse_input_declaration(queue)
     if queue.matches(local_start):
         return parse_local_declaration(queue)
-    return parse_reserved_statement(queue)
+    msg = f"Unknown keyword: {queue.queue[:10]!r}"
+    raise ParseError(msg)
 
 
 def parse_input_declaration(queue: Queue) -> InputDeclaration:
@@ -349,21 +338,14 @@ def parse_expression(queue: Queue) -> Expression:
             parse_whitespace(queue)
             attributes.append(parse_attribute(queue))
         expression = FunctionExpression(annotation=annotation, attributes=attributes)
-    elif queue.peek() in {"^", "&", "!", "%", "*", "+", "<", ">", "?", "~"}:
-        annotation = parse_unsupported_annotation(queue)
-        attributes = []
-        while queue.peek_after_whitespace() != "}":
-            parse_whitespace(queue)
-            attributes.append(parse_attribute(queue))
-        expression = UnsupportedExpression(annotation=annotation, attributes=attributes)
     else:
         literal = parse_literal(queue)
         annotation = None
         attributes = []
 
-        if queue.peek_after_whitespace() in {":", "^", "&", "!", "%", "*", "+", "<", ">", "?", "~"}:
+        if queue.peek_after_whitespace() == ":":
             parse_whitespace(queue)
-            annotation = parse_annotation(queue)
+            annotation = parse_function_annotation(queue)
 
         while queue.peek_after_whitespace() != "}":
             parse_whitespace(queue)
@@ -380,9 +362,9 @@ def parse_variable_expression(queue: Queue) -> VariableExpression:
     annotation = None
     attributes = []
 
-    if queue.peek_after_whitespace() in {":", "^", "&", "!", "%", "*", "+", "<", ">", "?", "~"}:
+    if queue.peek_after_whitespace() == ":":
         parse_whitespace(queue)
-        annotation = parse_annotation(queue)
+        annotation = parse_function_annotation(queue)
 
     while queue.peek_after_whitespace() != "}":
         parse_whitespace(queue)
@@ -420,12 +402,6 @@ def parse_name(queue: Queue) -> str:
     return name
 
 
-def parse_annotation(queue: Queue) -> FunctionAnnotation | UnsupportedAnnotation:
-    if queue.peek() == ":":
-        return parse_function_annotation(queue)
-    return parse_unsupported_annotation(queue)
-
-
 def parse_function_annotation(queue: Queue) -> FunctionAnnotation:
     queue.pop(":")
     name = parse_identifier(queue)
@@ -435,55 +411,6 @@ def parse_function_annotation(queue: Queue) -> FunctionAnnotation:
         options.append(parse_option(queue))
 
     return FunctionAnnotation(name=name, options=options)
-
-
-def parse_unsupported_annotation(queue: Queue) -> UnsupportedAnnotation:
-    source = queue.pop()
-    if queue.matches_after_whitespace(reserved_body_part_start):
-        source += parse_optional_whitespace(queue)
-        source += parse_reserved_body(queue)
-    return UnsupportedAnnotation(source=source)
-
-
-def parse_reserved_statement(queue: Queue) -> UnsupportedStatement:
-    queue.pop(".")
-    keyword = parse_name(queue)
-
-    body = ""
-    if queue.matches_after_whitespace(reserved_body_part_start):
-        body += parse_whitespace(queue)
-        body += parse_reserved_body(queue)
-
-    parse_optional_whitespace(queue)
-    expressions = [parse_expression(queue)]
-
-    while queue.peek_after_whitespace() == "{":
-        parse_optional_whitespace(queue)
-        expressions.append(parse_expression(queue))
-
-    return UnsupportedStatement(keyword=keyword, body=body or None, expressions=expressions)
-
-
-def parse_reserved_body(queue: Queue) -> str:
-    body = parse_reserved_body_part(queue)
-    while queue.matches_after_whitespace(reserved_body_part_start):
-        body += parse_optional_whitespace(queue)
-        body += parse_reserved_body_part(queue)
-    return body
-
-
-def parse_reserved_body_part(queue: Queue) -> str:
-    part = ""
-    while True:
-        if queue.matches(reserved_char):
-            part += queue.pop()
-        elif queue.matches(reserved_escape):
-            part += queue.pop_match(reserved_escape)
-        elif queue.peek() == "|":
-            part += str(parse_quoted_literal(queue))
-        else:
-            break
-    return part
 
 
 def parse_attribute(queue: Queue) -> Attribute:

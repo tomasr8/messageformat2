@@ -95,14 +95,6 @@ class FunctionAnnotation(Node):
         return f":{self.name}{options}"
 
 
-@dataclass
-class UnsupportedAnnotation(Node):
-    source: str
-
-    def __str__(self) -> str:
-        return self.source
-
-
 class Expression(Node):
     pass
 
@@ -110,7 +102,7 @@ class Expression(Node):
 @dataclass
 class VariableExpression(Expression):
     arg: VariableRef
-    annotation: FunctionAnnotation | UnsupportedAnnotation | None
+    annotation: FunctionAnnotation | None
     attributes: list[Attribute]
 
     @property
@@ -128,7 +120,7 @@ class VariableExpression(Expression):
 @dataclass
 class LiteralExpression(Expression):
     arg: Literal
-    annotation: FunctionAnnotation | UnsupportedAnnotation | None
+    annotation: FunctionAnnotation | None
     attributes: list[Attribute]
 
     @property
@@ -146,22 +138,6 @@ class LiteralExpression(Expression):
 @dataclass
 class FunctionExpression(Expression):
     annotation: FunctionAnnotation
-    attributes: list[Attribute]
-
-    @property
-    def fields(self) -> tuple[str, ...]:
-        return ("annotation", "attributes")
-
-    def __str__(self) -> str:
-        attributes = " ".join([str(attr) for attr in self.attributes])
-        if attributes:
-            attributes = f" {attributes}"
-        return f"{{{self.annotation}{attributes}}}"
-
-
-@dataclass
-class UnsupportedExpression(Expression):
-    annotation: UnsupportedAnnotation
     attributes: list[Attribute]
 
     @property
@@ -259,23 +235,7 @@ class LocalDeclaration(Node):
         return f".local {self.name} = {self.value}"
 
 
-@dataclass
-class UnsupportedStatement(Node):
-    keyword: str
-    body: str | None
-    expressions: list[Expression]
-
-    @property
-    def fields(self) -> tuple[str, ...]:
-        return ("expressions",)
-
-    def __str__(self) -> str:
-        body = self.body or ""
-        expressions = "\n".join([str(expr) for expr in self.expressions])
-        return f".{self.keyword}{body}\n{expressions}"
-
-
-type Declaration = InputDeclaration | LocalDeclaration | UnsupportedStatement
+type Declaration = InputDeclaration | LocalDeclaration
 
 
 @dataclass
@@ -436,7 +396,7 @@ class DataModelValidator(DataModelVisitor):
                 return False
             case VariableExpression(annotation=None, arg=VariableRef(name=name)):
                 for decl in declarations:
-                    if isinstance(decl, UnsupportedStatement) or decl.name != name:
+                    if decl.name != name:
                         continue
                     match decl:
                         case InputDeclaration(value=VariableExpression(annotation=annotation)):
@@ -469,9 +429,6 @@ class DataModelValidator(DataModelVisitor):
     def _check_duplicate_declarations(self, declarations: list[Declaration]) -> None:
         names = set()
         for decl in declarations:
-            if isinstance(decl, UnsupportedStatement):
-                continue
-
             if decl.name in names:
                 msg = f"Duplicate declaration: {decl.name}"
                 raise DuplicateDeclaration(msg)
@@ -480,9 +437,6 @@ class DataModelValidator(DataModelVisitor):
     def _check_implicit_redeclaration(self, declarations: list[Declaration]) -> None:
         implicit = set()
         for decl in declarations:
-            if isinstance(decl, UnsupportedStatement):
-                continue
-
             if decl.name in implicit:
                 msg = f"Redeclaration of an implicit variable: {decl.name}"
                 raise DuplicateDeclaration(msg)

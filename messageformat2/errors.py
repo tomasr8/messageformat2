@@ -115,30 +115,6 @@ class UnknownFunction(ResolutionError):
     """
 
 
-class UnsupportedExpression(ResolutionError):
-    """Raised when an expression uses reserved syntax.
-
-    Examples:
-        >>> from messageformat2 import Message
-        >>> Message("The value is {!horse}").format() # doctest: +ELLIPSIS
-        Traceback (most recent call last):
-        ...
-        messageformat2.errors.UnsupportedExpression: ...
-    """
-
-
-class UnsupportedStatement(ResolutionError):
-    """Raised when the message contains a reserved statement.
-
-    Examples:
-        >>> from messageformat2 import Message
-        >>> Message(".unknown {$x} .match {$x :string} * {{}}").format() # doctest: +ELLIPSIS
-        Traceback (most recent call last):
-        ...
-        messageformat2.errors.UnsupportedStatement: ...
-    """
-
-
 class InvalidExpression(ResolutionError):
     pass
 

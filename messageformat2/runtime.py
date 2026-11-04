@@ -9,8 +9,6 @@ from messageformat2.errors import (
     SelectionError,
     UnknownFunction,
     UnresolvedVariable,
-    UnsupportedExpression,
-    UnsupportedStatement,
 )
 from messageformat2.parser import (
     CatchallKey,
@@ -26,15 +24,10 @@ from messageformat2.parser import (
     Pattern,
     PatternMessage,
     SelectMessage,
-    UnsupportedAnnotation,
     VariableExpression,
     VariableRef,
     Variant,
 )
-from messageformat2.parser import (
-    UnsupportedExpression as _UnsupportedExpression,
-)
-from messageformat2.parser import UnsupportedStatement as _UnsupportedStatement
 
 
 @dataclass
@@ -96,12 +89,7 @@ def format_message(message: Message, locale: Locale, inputs: dict[str, Any], reg
 
 def format_pattern_message(message: PatternMessage, ctx: FormattingContext) -> str:
     for decl in message.declarations:
-        match decl:
-            case _UnsupportedStatement():
-                msg = "Unsupported statement"
-                raise UnsupportedStatement(msg)
-            case _:
-                ctx.declarations[decl.name] = decl
+        ctx.declarations[decl.name] = decl
     return format_pattern(message.pattern, ctx)
 
 
@@ -111,7 +99,7 @@ def format_pattern(pattern: Pattern, ctx: FormattingContext) -> str:
         match part:
             case str():
                 output += part
-            case LiteralExpression() | VariableExpression() | FunctionExpression() | _UnsupportedExpression():
+            case LiteralExpression() | VariableExpression() | FunctionExpression():
                 output += format_expression(part, ctx)
             case Markup():
                 output += format_markup(part, ctx)
@@ -120,12 +108,7 @@ def format_pattern(pattern: Pattern, ctx: FormattingContext) -> str:
 
 def format_select_message(message: SelectMessage, ctx: FormattingContext) -> str:
     for decl in message.declarations:
-        match decl:
-            case _UnsupportedStatement():
-                msg = "Unsupported statement"
-                raise UnsupportedStatement(msg)
-            case _:
-                ctx.declarations[decl.name] = decl
+        ctx.declarations[decl.name] = decl
 
     selectors = [resolve_selector(selector, ctx) for selector in message.selectors]
 
@@ -231,37 +214,25 @@ def resolve_expression(expression: Expression, ctx: FormattingContext) -> Any | 
         case LiteralExpression(arg=Literal(value), annotation=annotation):
             if not annotation:
                 return value
-            match annotation:
-                case FunctionAnnotation(name=name, options=options):
-                    options = resolve_options(options, ctx)
-                    return LazyValue(fn_name=name, value=value, options=options)
-                case UnsupportedAnnotation():
-                    msg = "Unsupported expression"
-                    raise UnsupportedExpression(msg)
+            options = resolve_options(annotation.options, ctx)
+            return LazyValue(fn_name=annotation.name, value=value, options=options)
         case VariableExpression(arg=VariableRef(ref), annotation=annotation):
             if not annotation:
                 return resolve_variable(ref, ctx)
-            match annotation:
-                case FunctionAnnotation(name=name, options=options):
-                    resolved = resolve_variable(ref, ctx)
-                    options = resolve_options(options, ctx)
-                    match resolved:
-                        case LazyValue(fn_name=lazy_function, value=lazy_value, options=lazy_options):
-                            if lazy_function and lazy_function != name:
-                                msg = f"Function mismatch: {lazy_function} != {name}"
-                                raise ValueError(msg)
-                            return LazyValue(fn_name=name, value=lazy_value, options=(lazy_options or {}) | options)
-                        case _:
-                            return LazyValue(fn_name=name, value=resolved, options=options)
-                case UnsupportedAnnotation():
-                    msg = "Unsupported expression"
-                    raise UnsupportedExpression(msg)
+            name = annotation.name
+            resolved = resolve_variable(ref, ctx)
+            options = resolve_options(annotation.options, ctx)
+            match resolved:
+                case LazyValue(fn_name=lazy_function, value=lazy_value, options=lazy_options):
+                    if lazy_function and lazy_function != name:
+                        msg = f"Function mismatch: {lazy_function} != {name}"
+                        raise ValueError(msg)
+                    return LazyValue(fn_name=name, value=lazy_value, options=(lazy_options or {}) | options)
+                case _:
+                    return LazyValue(fn_name=name, value=resolved, options=options)
         case FunctionExpression(annotation=FunctionAnnotation(name=name, options=options)):
             options = resolve_options(options, ctx)
             return LazyValue(fn_name=name, value=None, options=options)
-        case _UnsupportedExpression(annotation=annotation):
-            msg = f"Unsupported expression: {annotation}"
-            raise UnsupportedExpression(msg)
 
 
 def resolve_variable(name: str, ctx: FormattingContext) -> Any:
@@ -271,23 +242,17 @@ def resolve_variable(name: str, ctx: FormattingContext) -> Any:
             case InputDeclaration(value=VariableExpression(annotation=annotation)):
                 if not annotation:
                     return resolve_global(name, ctx)
-                match annotation:
-                    case FunctionAnnotation(name=fn_name, options=options):
-                        resolved = resolve_global(name, ctx)
-                        options = resolve_options(options, ctx)
-                        match resolved:
-                            case LazyValue(fn_name=lazy_fn_name, value=lazy_value, options=lazy_options):
-                                if lazy_fn_name and lazy_fn_name != fn_name:
-                                    msg = f"Function mismatch: {lazy_fn_name} != {fn_name}"
-                                    raise ValueError(msg)
-                                return LazyValue(
-                                    fn_name=fn_name, value=lazy_value, options=(lazy_options or {}) | options
-                                )
-                            case _:
-                                return LazyValue(fn_name=fn_name, value=resolved, options=options)
-                    case UnsupportedAnnotation(annotation=annotation):
-                        msg = f"Unsupported expression: {annotation}"
-                        raise UnsupportedExpression(msg)
+                fn_name = annotation.name
+                resolved = resolve_global(name, ctx)
+                options = resolve_options(annotation.options, ctx)
+                match resolved:
+                    case LazyValue(fn_name=lazy_fn_name, value=lazy_value, options=lazy_options):
+                        if lazy_fn_name and lazy_fn_name != fn_name:
+                            msg = f"Function mismatch: {lazy_fn_name} != {fn_name}"
+                            raise ValueError(msg)
+                        return LazyValue(fn_name=fn_name, value=lazy_value, options=(lazy_options or {}) | options)
+                    case _:
+                        return LazyValue(fn_name=fn_name, value=resolved, options=options)
             case _:
                 expression = decl.value
                 return resolve_expression(expression, ctx)

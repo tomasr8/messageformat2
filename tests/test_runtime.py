@@ -8,8 +8,6 @@ from messageformat2.errors import (
     OperandMismatch,
     ParseError,
     UnknownFunction,
-    UnsupportedExpression,
-    UnsupportedStatement,
 )
 
 
@@ -237,17 +235,6 @@ def test_simple_message_cannot_start_with_period(message):
     [
         ("{:unknown}", None, UnknownFunction),
         ("{|dog| :unknown cute=yes}", None, UnknownFunction),
-        ("The value is {!horse}.", None, UnsupportedExpression),
-        ("The value is {$x !horse}.", None, UnsupportedExpression),
-        ("The value is {|literal| !horse}.", None, UnsupportedExpression),
-        (
-            """\
-.match {$count !horse}
-* {{The count is {$count}.}}""",
-            {"count": 42},
-            UnsupportedExpression,
-        ),
-        (".unknown {$x} .match {$count :integer} * {{Reserved statement}}", None, UnsupportedStatement),
         ("{|dog| :string foo=1 bar=2}", None, OperandMismatch),
     ],
 )
