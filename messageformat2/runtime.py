@@ -169,7 +169,10 @@ def format_markup(markup: Markup, ctx: FormattingContext) -> str:
 
 
 def resolve_options(options: list[Option], ctx: FormattingContext) -> ResolvedOptions:
-    return ResolvedOptions({opt.name: resolve_option(opt, ctx) for opt in options})
+    return ResolvedOptions(
+        {opt.name: resolve_option(opt, ctx) for opt in options},
+        literal=frozenset(opt.name for opt in options if isinstance(opt.value, Literal)),
+    )
 
 
 def resolve_option(option: Option, ctx: FormattingContext) -> Any:

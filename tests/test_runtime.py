@@ -317,11 +317,11 @@ def test_reannotation_passes_lazy_value_with_its_options():
     def fn(value, locale, options) -> str:  # noqa: ARG001
         if isinstance(value, LazyValue):
             value = f"{value.fn_name}[{value.value}:{sorted(value.options.items())}]"
-        return f"{value}:{sorted(options.items())}"
+        return f"{value}:{sorted(options.items())}:{sorted(options.literal)}"
 
     message = ".local $x = {42 :fn a=1 b=2} {{{$x :fn b=3 c=$c}}}"
     out = Message(message).format({"c": 4}, formatters={"fn": fn})
-    assert out == "fn[42:[('a', '1'), ('b', '2')]]:[('b', '3'), ('c', 4)]"
+    assert out == "fn[42:[('a', '1'), ('b', '2')]]:[('b', '3'), ('c', 4)]:['b']"
 
 
 def test_reannotation_with_different_function_passes_lazy_value():

@@ -18,7 +18,18 @@ if TYPE_CHECKING:
 
 
 class ResolvedOptions(dict[str, Any]):
-    """The resolved options of an expression, mapping option names to their resolved values."""
+    """The resolved options of an expression, mapping option names to their resolved values.
+
+    `literal` holds the names of the options whose value was set by a literal in the expression itself
+    (as opposed to a variable, or an option inherited from an annotated operand). Some functions
+    require certain options (e.g. `select` on `:number`) to be set by a literal.
+    """
+
+    literal: frozenset[str]
+
+    def __init__(self, values: dict[str, Any] | None = None, *, literal: frozenset[str] = frozenset()) -> None:
+        super().__init__(values or {})
+        self.literal = literal
 
 
 class LazyValue:
