@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Software Development :: Internationalization",
     "Topic :: Software Development :: Localization",
 ]
-dependencies = ["Babel==2.18.0", "click==8.5.0"]
+dependencies = ["Babel>=2", "click>=8"]
 dynamic = ["version"]
 
 [dependency-groups]
