@@ -43,6 +43,7 @@ docs = ["mkdocs==1.6.1", "mkdocstrings[python]==1.0.8", "mkdocs-material==9.8.0"
 [project.urls]
 Homepage = "https://github.com/tomasr8/messageformat2"
 Github = "https://github.com/tomasr8/messageformat2"
+Documentation = "https://messageformat2.readthedocs.io/en/latest/"
 
 [project.scripts]
 mf2 = "messageformat2.cli:cli"
