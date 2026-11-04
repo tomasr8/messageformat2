@@ -4,14 +4,25 @@ import re
 import unicodedata
 import zoneinfo
 from dataclasses import dataclass, field
-from decimal import ROUND_DOWN, ROUND_HALF_EVEN, Context, Decimal
+from decimal import (
+    ROUND_CEILING,
+    ROUND_DOWN,
+    ROUND_FLOOR,
+    ROUND_HALF_DOWN,
+    ROUND_HALF_EVEN,
+    ROUND_HALF_UP,
+    ROUND_UP,
+    Context,
+    Decimal,
+    localcontext,
+)
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
 from babel import Locale
 from babel.dates import format_datetime as _format_datetime
 from babel.dates import format_time as _format_time
 from babel.dates import match_skeleton
-from babel.numbers import get_minus_sign_symbol, get_plus_sign_symbol, parse_pattern
+from babel.numbers import get_minus_sign_symbol, get_plus_sign_symbol
 
 from messageformat2.errors import (
     BadOperand,
@@ -112,12 +123,29 @@ NUMBER_LITERAL = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][-+]?[0-9]
 """The `number-literal` production: the only strings accepted as numeric operands."""
 DIGIT_SIZE_OPTION = re.compile(r"^(?:0|[1-9][0-9]?)$")
 PLURAL_KEYWORDS = frozenset({"zero", "one", "two", "few", "many", "other"})
+# Functions whose resolved value can be used as the operand of a numeric function
 NUMERIC_FUNCTIONS = frozenset({"number", "integer", "offset"})
 SIGN_DISPLAY = frozenset({"auto", "always", "exceptZero", "negative", "never"})
 USE_GROUPING = frozenset({"auto", "always", "never", "min2"})
 SELECT = frozenset({"plural", "ordinal", "exact"})
-# Options of an operand which are discarded by `:integer`
-INTEGER_DISCARDED_OPTIONS = ("minimumFractionDigits", "maximumFractionDigits", "minimumSignificantDigits")
+TRAILING_ZERO_DISPLAY = frozenset({"auto", "stripIfInteger"})
+ROUNDING_PRIORITY = frozenset({"auto", "morePrecision", "lessPrecision"})
+ROUNDING_INCREMENTS = frozenset({1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000})
+ROUNDING_MODES: dict[str, str | None] = {
+    "ceil": ROUND_CEILING,
+    "floor": ROUND_FLOOR,
+    "expand": ROUND_UP,
+    "trunc": ROUND_DOWN,
+    "halfCeil": None,  # ties towards +Infinity: ROUND_HALF_UP for positive numbers, ROUND_HALF_DOWN for negative ones
+    "halfFloor": None,  # ties towards -Infinity
+    "halfExpand": ROUND_HALF_UP,
+    "halfTrunc": ROUND_HALF_DOWN,
+    "halfEven": ROUND_HALF_EVEN,
+}
+# Options of an operand which are discarded when it is used as the operand of these functions
+DISCARDED_OPERAND_OPTIONS = {
+    "integer": ("minimumFractionDigits", "maximumFractionDigits", "minimumSignificantDigits"),
+}
 # Options which affect the serialization of integers for exact matching
 EXACT_MATCH_OPTIONS = (
     "minimumFractionDigits",
@@ -125,6 +153,7 @@ EXACT_MATCH_OPTIONS = (
     "minimumSignificantDigits",
     "maximumSignificantDigits",
 )
+DECIMAL_CONTEXT = Context(prec=100)
 
 
 class MarkupFormatter(Protocol):
@@ -205,8 +234,8 @@ def numeric_operand(value: Any, options: ResolvedOptions, fn_name: str) -> tuple
             msg = f"Bad operand: the resolved value of :{value.fn_name} cannot be used as a numeric operand"
             raise BadOperand(msg)
         number, inherited = numeric_value(value)
-        if fn_name == "integer":
-            inherited = ResolvedOptions({k: v for k, v in inherited.items() if k not in INTEGER_DISCARDED_OPTIONS})
+        discarded = DISCARDED_OPERAND_OPTIONS.get(fn_name, ())
+        inherited = {k: v for k, v in inherited.items() if k not in discarded}
         # options inherited from the operand were not set by a literal in *this* expression
         return number, ResolvedOptions({**inherited, **options}, literal=options.literal)
     return to_decimal(value), options
@@ -216,7 +245,7 @@ def numeric_value(lazy: LazyValue) -> tuple[Decimal, ResolvedOptions]:
     """Return the numeric value and the resolved options of a value annotated with a numeric function."""
     number, options = numeric_operand(lazy.value, lazy.options, lazy.fn_name)
     if lazy.fn_name == "integer":
-        number = number.to_integral_value(rounding=ROUND_DOWN)
+        number = round_to_integer(number)
     elif lazy.fn_name == "offset":
         number += offset_delta(lazy.options)
         options = ResolvedOptions({k: v for k, v in options.items() if k not in ("add", "subtract")})
@@ -225,14 +254,157 @@ def numeric_value(lazy: LazyValue) -> tuple[Decimal, ResolvedOptions]:
 
 def offset_delta(options: dict[str, Any]) -> Decimal:
     add, subtract = digit_size_option(options, "add"), digit_size_option(options, "subtract")
-    if (add is None) == (subtract is None):
-        msg = "Bad option: :offset requires exactly one of the options 'add' and 'subtract'"
-        raise BadOption(msg)
-    return Decimal(add) if add is not None else -Decimal(subtract)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+    if add is None and subtract is not None:
+        return -Decimal(subtract)
+    if add is not None and subtract is None:
+        return Decimal(add)
+    msg = "Bad option: :offset requires exactly one of the options 'add' and 'subtract'"
+    raise BadOption(msg)
 
 
 def _integer_digits(number: Decimal) -> int:
     return max(number.adjusted() + 1, 1) if number != 0 else 1
+
+
+def _fraction_digits(number: Decimal) -> int:
+    exponent = number.as_tuple().exponent
+    return max(-exponent, 0) if isinstance(exponent, int) else 0
+
+
+def _rounding(mode: str, number: Decimal) -> str:
+    rounding = ROUNDING_MODES[mode]
+    if rounding is not None:
+        return rounding
+    if mode == "halfCeil":
+        return ROUND_HALF_UP if number >= 0 else ROUND_HALF_DOWN
+    return ROUND_HALF_DOWN if number >= 0 else ROUND_HALF_UP
+
+
+def round_to_integer(number: Decimal) -> Decimal:
+    """Round to an integer with the default rounding mode (`halfExpand`: ties away from zero)."""
+    return number.to_integral_value(rounding=ROUND_HALF_UP)
+
+
+def round_to_fraction_digits(number: Decimal, digits: int, mode: str = "halfExpand", increment: int = 1) -> Decimal:
+    quantum = Decimal(increment).scaleb(-digits)
+    with localcontext(DECIMAL_CONTEXT):
+        rounded = (number / quantum).to_integral_value(rounding=_rounding(mode, number)) * quantum
+        return rounded.quantize(Decimal(1).scaleb(-digits))
+
+
+def round_to_significant_digits(number: Decimal, digits: int, mode: str = "halfExpand") -> Decimal:
+    if number == 0:
+        return number
+    return Context(prec=digits, rounding=_rounding(mode, number)).create_decimal(number)
+
+
+@dataclass(frozen=True)
+class Digits:
+    """The resolved digit and rounding options of a numeric function."""
+
+    min_int: int
+    min_frac: int
+    max_frac: int
+    min_sig: int | None
+    max_sig: int | None
+    rounding_priority: str
+    rounding_increment: int
+    rounding_mode: str
+    strip_if_integer: bool
+
+
+def resolve_digits(
+    options: dict[str, Any],
+    *,
+    min_frac: int,
+    max_frac: int,
+    fixed_fraction: bool = False,
+    rounding_increment: bool = True,
+) -> Digits:
+    """Validate the digit options, with `min_frac`/`max_frac` as the defaults for the fraction digits.
+
+    With `fixed_fraction` (currency), the single `fractionDigits` option sets both minimum and maximum.
+    `roundingIncrement` is only an option of `:number` and `:currency`.
+    """
+    min_int = digit_size_option(options, "minimumIntegerDigits")
+    if fixed_fraction:
+        if options.get("fractionDigits", "auto") != "auto":
+            min_frac = max_frac = digit_size_option(options, "fractionDigits") or 0
+    else:
+        option_min, option_max = (
+            digit_size_option(options, "minimumFractionDigits"),
+            digit_size_option(options, "maximumFractionDigits"),
+        )
+        if option_min is not None and option_max is not None and option_min > option_max:
+            msg = f"Bad option: minimumFractionDigits={option_min} is greater than maximumFractionDigits={option_max}"
+            raise BadOption(msg)
+        if option_min is not None:
+            min_frac, max_frac = option_min, max(max_frac, option_min)
+        if option_max is not None:
+            max_frac, min_frac = option_max, min(min_frac, option_max)
+    min_sig, max_sig = (
+        digit_size_option(options, "minimumSignificantDigits"),
+        digit_size_option(options, "maximumSignificantDigits"),
+    )
+    if min_sig is not None or max_sig is not None:
+        min_sig, max_sig = max(min_sig or 1, 1), max(max_sig or 21, 1)
+        if min_sig > max_sig:
+            msg = f"Bad option: minimumSignificantDigits={min_sig} is greater than maximumSignificantDigits={max_sig}"
+            raise BadOption(msg)
+    increment = str(options.get("roundingIncrement", 1)) if rounding_increment else "1"
+    if increment not in {str(i) for i in ROUNDING_INCREMENTS}:
+        msg = f"Bad option: roundingIncrement={increment!r} is not one of {sorted(ROUNDING_INCREMENTS)}"
+        raise BadOption(msg)
+    increment = int(increment)
+    if increment != 1 and (min_sig is not None or min_frac != max_frac):
+        msg = "Bad option: roundingIncrement requires equal fraction digits and no significant digits options"
+        raise BadOption(msg)
+    return Digits(
+        min_int=max(min_int or 1, 1),
+        min_frac=min_frac,
+        max_frac=max_frac,
+        min_sig=min_sig,
+        max_sig=max_sig,
+        rounding_priority=choice_option(options, "roundingPriority", ROUNDING_PRIORITY, "auto") or "auto",
+        rounding_increment=increment,
+        rounding_mode=choice_option(options, "roundingMode", frozenset(ROUNDING_MODES), "halfExpand") or "halfExpand",
+        strip_if_integer=choice_option(options, "trailingZeroDisplay", TRAILING_ZERO_DISPLAY, "auto")
+        == "stripIfInteger",
+    )
+
+
+def round_number(number: Decimal, digits: Digits) -> tuple[Decimal, tuple[int, int]]:
+    """Round a number according to the digit options.
+
+    Returns the rounded number and the minimum and maximum number of fraction digits to display.
+    """
+    use_significant = digits.max_sig is not None
+    if use_significant and digits.rounding_priority != "auto":
+        assert digits.max_sig is not None
+        fraction_magnitude = -digits.max_frac
+        significant_magnitude = number.adjusted() - digits.max_sig + 1
+        more_precise_is_significant = significant_magnitude < fraction_magnitude
+        use_significant = more_precise_is_significant == (digits.rounding_priority == "morePrecision")
+    if use_significant:
+        assert digits.min_sig is not None
+        assert digits.max_sig is not None
+        rounded = round_to_significant_digits(number, digits.max_sig, digits.rounding_mode)
+        min_frac = max(digits.min_sig - _integer_digits(rounded), 0)
+        max_frac = max(_fraction_digits(rounded), min_frac)
+    else:
+        rounded = round_to_fraction_digits(number, digits.max_frac, digits.rounding_mode, digits.rounding_increment)
+        min_frac, max_frac = digits.min_frac, digits.max_frac
+    if digits.strip_if_integer and rounded == rounded.to_integral_value():
+        min_frac = max_frac = 0
+    return rounded, (min_frac, max_frac)
+
+
+def _grouping(use_grouping: str, number: Decimal) -> bool:
+    if use_grouping == "never":
+        return False
+    if use_grouping == "min2":
+        return _integer_digits(number) >= 5  # noqa: PLR2004
+    return True
 
 
 def check_select_option(options: ResolvedOptions) -> str:
@@ -243,8 +415,8 @@ def check_select_option(options: ResolvedOptions) -> str:
     return choice_option(options, "select", SELECT, "plural") or "plural"
 
 
-def format_numeric(number: Decimal, locale: Locale, options: ResolvedOptions) -> str:
-    """Format a number according to the `:number`/`:integer` options.
+def format_numeric(number: Decimal, locale: Locale, options: ResolvedOptions, *, percent: bool = False) -> str:
+    """Format a number according to the `:number`/`:integer`/`:percent` options.
 
     An invalid `select` option is a Bad Option error, but does not affect the formatted result.
     """
@@ -254,42 +426,28 @@ def format_numeric(number: Decimal, locale: Locale, options: ResolvedOptions) ->
         select_error = e
     else:
         select_error = None
-    formatted = _format_numeric(number, locale, options)
+    formatted = _format_numeric(number, locale, options, percent=percent)
     if select_error is not None:
         raise BadOption(str(select_error), result=formatted) from None
     return formatted
 
 
-def _format_numeric(number: Decimal, locale: Locale, options: ResolvedOptions) -> str:
+def _format_numeric(number: Decimal, locale: Locale, options: ResolvedOptions, *, percent: bool) -> str:
     sign_display = choice_option(options, "signDisplay", SIGN_DISPLAY, "auto") or "auto"
     use_grouping = choice_option(options, "useGrouping", USE_GROUPING, "auto") or "auto"
-    numbering_system = options.get("numberingSystem", "default")
-    min_int = digit_size_option(options, "minimumIntegerDigits")
-    min_frac = digit_size_option(options, "minimumFractionDigits")
-    max_frac = digit_size_option(options, "maximumFractionDigits")
-    min_sig = digit_size_option(options, "minimumSignificantDigits")
-    max_sig = digit_size_option(options, "maximumSignificantDigits")
+    pattern = copy.copy(locale.percent_formats[None] if percent else locale.decimal_formats[None])
+    digits = resolve_digits(
+        options, min_frac=pattern.frac_prec[0], max_frac=pattern.frac_prec[1], rounding_increment=not percent
+    )
+    number, pattern.frac_prec = round_number(number, digits)
+    pattern.int_prec = (digits.min_int, pattern.int_prec[1])
 
-    if max_sig is not None:
-        number = Context(prec=max(max_sig, 1), rounding=ROUND_HALF_EVEN).create_decimal(number)
-
-    pattern = copy.copy(parse_pattern(locale.decimal_formats[None]))
-    frac_min, frac_max = pattern.frac_prec
-    if min_frac is not None:
-        frac_min = min_frac
-        frac_max = max(frac_max, min_frac)
-    if max_frac is not None:
-        frac_max = max_frac
-        frac_min = min(frac_min, max_frac)
-    if min_sig is not None:
-        needed = max(min_sig - _integer_digits(number), 0)
-        frac_min, frac_max = max(frac_min, needed), max(frac_max, needed)
-    pattern.frac_prec = (frac_min, frac_max)
-    if min_int is not None:
-        pattern.int_prec = (max(min_int, 1), pattern.int_prec[1])
-
+    # The percent pattern multiplies by 100 itself; the number was already multiplied before rounding
     formatted = pattern.apply(
-        abs(number), locale, group_separator=use_grouping != "never", numbering_system=numbering_system
+        abs(number).scaleb(-pattern.scale),
+        locale,
+        group_separator=_grouping(use_grouping, number),
+        numbering_system="default",
     )
     negative = number.is_signed()
     show_sign = {
@@ -302,16 +460,19 @@ def _format_numeric(number: Decimal, locale: Locale, options: ResolvedOptions) -
     if not show_sign:
         return formatted
     if negative:
-        return get_minus_sign_symbol(locale, numbering_system=numbering_system) + formatted
-    return get_plus_sign_symbol(locale, numbering_system=numbering_system) + formatted
+        return get_minus_sign_symbol(locale, numbering_system="default") + formatted
+    return get_plus_sign_symbol(locale, numbering_system="default") + formatted
 
 
-def select_numeric(number: Decimal, locale: Locale, options: ResolvedOptions, keys: list[str]) -> list[str]:
+def select_numeric(
+    number: Decimal, locale: Locale, options: ResolvedOptions, keys: list[str], *, select: str | None = None
+) -> list[str]:
     """Return the matching keys for a number, best match first: an exact match, then a plural/ordinal keyword."""
-    select = check_select_option(options)
+    if select is None:
+        select = check_select_option(options)
 
     min_frac = digit_size_option(options, "minimumFractionDigits")
-    if min_frac is not None and -number.as_tuple().exponent < min_frac:  # type: ignore[operator]  # ty: ignore[unsupported-operator]
+    if min_frac is not None and _fraction_digits(number) < min_frac:
         number = number.quantize(Decimal(10) ** -min_frac)
 
     if number == number.to_integral_value() and not any(options.get(name) for name in EXACT_MATCH_OPTIONS):
@@ -351,15 +512,15 @@ def number_selector(value: Any, locale: Locale, options: ResolvedOptions, keys: 
 
 def integer_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
     number, options = numeric_operand(value, options, "integer")
-    number = number.to_integral_value(rounding=ROUND_DOWN)
-    options = ResolvedOptions({**options, "maximumFractionDigits": 0}, literal=options.literal)
-    return format_numeric(number, locale, options)
+    options = ResolvedOptions(
+        {**options, "minimumFractionDigits": 0, "maximumFractionDigits": 0}, literal=options.literal
+    )
+    return format_numeric(round_to_integer(number), locale, options)
 
 
 def integer_selector(value: Any, locale: Locale, options: ResolvedOptions, keys: list[str]) -> list[str]:
     number, options = numeric_operand(value, options, "integer")
-    number = number.to_integral_value(rounding=ROUND_DOWN)
-    return select_numeric(number, locale, options, keys)
+    return select_numeric(round_to_integer(number), locale, options, keys)
 
 
 def offset_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:

@@ -23,13 +23,54 @@ from messageformat2.errors import BadOperand, BadOption, BadSelector, BadVariant
         ("{4.2 :number minimumIntegerDigits=3}", None, "en", "004.2"),
         ("{1234.5678 :number maximumSignificantDigits=3}", None, "en", "1,230"),
         ("{1.5 :number minimumSignificantDigits=4}", None, "en", "1.500"),
+        ("{0.000123456 :number maximumSignificantDigits=2}", None, "en", "0.00012"),
+        # rounding: the default mode is halfExpand (ties away from zero), unlike Python's/Babel's half-even
+        ("{2.5 :number maximumFractionDigits=0}", None, "en", "3"),
+        ("{-2.5 :number maximumFractionDigits=0}", None, "en", "-3"),
+        ("{2.5 :number maximumFractionDigits=0 roundingMode=halfEven}", None, "en", "2"),
+        ("{2.5 :number maximumFractionDigits=0 roundingMode=halfTrunc}", None, "en", "2"),
+        ("{2.5 :number maximumFractionDigits=0 roundingMode=halfCeil}", None, "en", "3"),
+        ("{-2.5 :number maximumFractionDigits=0 roundingMode=halfCeil}", None, "en", "-2"),
+        ("{2.5 :number maximumFractionDigits=0 roundingMode=halfFloor}", None, "en", "2"),
+        ("{-2.5 :number maximumFractionDigits=0 roundingMode=halfFloor}", None, "en", "-3"),
+        ("{2.1 :number maximumFractionDigits=0 roundingMode=ceil}", None, "en", "3"),
+        ("{-2.1 :number maximumFractionDigits=0 roundingMode=ceil}", None, "en", "-2"),
+        ("{2.9 :number maximumFractionDigits=0 roundingMode=floor}", None, "en", "2"),
+        ("{-2.1 :number maximumFractionDigits=0 roundingMode=floor}", None, "en", "-3"),
+        ("{2.1 :number maximumFractionDigits=0 roundingMode=expand}", None, "en", "3"),
+        ("{-2.9 :number maximumFractionDigits=0 roundingMode=trunc}", None, "en", "-2"),
+        ("{1.2345 :number maximumSignificantDigits=3 roundingMode=floor}", None, "en", "1.23"),
+        ("{5 :number minimumFractionDigits=2 trailingZeroDisplay=stripIfInteger}", None, "en", "5"),
+        ("{5.01 :number minimumFractionDigits=2 trailingZeroDisplay=stripIfInteger}", None, "en", "5.01"),
+        ("{4.999 :number maximumFractionDigits=2 trailingZeroDisplay=stripIfInteger}", None, "en", "5"),
+        ("{1.23 :number minimumFractionDigits=2 maximumFractionDigits=2 roundingIncrement=5}", None, "en", "1.25"),
+        ("{1.22 :number minimumFractionDigits=2 maximumFractionDigits=2 roundingIncrement=5}", None, "en", "1.20"),
+        ("{1234 :number minimumFractionDigits=0 maximumFractionDigits=0 roundingIncrement=50}", None, "en", "1,250"),
+        (
+            "{1234.5678 :number maximumFractionDigits=1 maximumSignificantDigits=3 roundingPriority=morePrecision}",
+            None,
+            "en",
+            "1,234.6",
+        ),
+        (
+            "{1234.5678 :number maximumFractionDigits=1 maximumSignificantDigits=3 roundingPriority=lessPrecision}",
+            None,
+            "en",
+            "1,230",
+        ),
+        ("{1234.5678 :number maximumFractionDigits=1 maximumSignificantDigits=3}", None, "en", "1,230"),
+        ("{1234 :number useGrouping=min2}", None, "en", "1234"),
+        ("{12345 :number useGrouping=min2}", None, "en", "12,345"),
+        ("{1234 :number useGrouping=always}", None, "en", "1,234"),
         ("{42 :number signDisplay=always}", None, "en", "+42"),
         ("{-42 :number signDisplay=never}", None, "en", "42"),
         ("{0 :number signDisplay=exceptZero}", None, "en", "0"),
         ("{-0 :number signDisplay=negative}", None, "en", "0"),
         ("{-0 :number}", None, "en", "-0"),
         ("{4.2 :integer}", None, "en", "4"),
-        ("{-4.7 :integer}", None, "en", "-4"),
+        ("{-4.7 :integer}", None, "en", "-5"),
+        ("{1.5 :integer}", None, "en", "2"),
+        ("{-2.5 :integer}", None, "en", "-3"),
         ("{|0.42e+1| :integer}", None, "en", "4"),
         ("{1234567 :integer}", None, "en", "1,234,567"),
         ("{41 :offset add=1}", None, "en", "42"),
@@ -73,6 +114,14 @@ def test_number_formatting(message, inputs, locale, formatted):
         ("{42 :number useGrouping=foo}", None, BadOption),
         ("{42 :number select=foo}", None, BadOption),
         ("{42 :number select=$s}", {"s": "exact"}, BadOption),
+        ("{42 :number roundingMode=foo}", None, BadOption),
+        ("{42 :number roundingPriority=foo}", None, BadOption),
+        ("{42 :number trailingZeroDisplay=foo}", None, BadOption),
+        ("{42 :number roundingIncrement=3}", None, BadOption),
+        ("{42 :number roundingIncrement=5 maximumFractionDigits=2}", None, BadOption),
+        ("{42 :number roundingIncrement=5 maximumSignificantDigits=2}", None, BadOption),
+        ("{42 :number minimumFractionDigits=3 maximumFractionDigits=1}", None, BadOption),
+        ("{42 :number minimumSignificantDigits=3 maximumSignificantDigits=1}", None, BadOption),
         ("{42 :offset}", None, BadOption),
         ("{42 :offset add=foo}", None, BadOption),
         ("{42 :offset add=1 subtract=1}", None, BadOption),
@@ -141,10 +190,11 @@ def test_exact_selection_uses_visible_fraction_digits():
     assert Message(message).format({"n": 1}, "en") == "other"
 
 
-def test_integer_selection_truncates():
+def test_integer_selection_rounds():
     message = ".input {$n :integer} .match $n 1 {{=1}} one {{one}} * {{other}}"
     assert Message(message).format({"n": 1.2}, "en") == "=1"
-    assert Message(message).format({"n": 1.9}, "en") == "=1"
+    assert Message(message).format({"n": 1.5}, "en") == "other"
+    assert Message(message).format({"n": 0.5}, "en") == "=1"
 
 
 def test_offset_selection():

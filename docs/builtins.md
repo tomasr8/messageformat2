@@ -30,8 +30,8 @@ cat {{I have a cat}}
 
 The operand must be an `int`, `float` or `Decimal` (but not a `bool`), or a string matching the
 `number-literal` production of the spec (e.g. `|-1234.5|`, `|1e3|`; `|01|` or `|.5|` are not numbers).
-The resolved value of another numeric function (`:number`, `:integer`, `:offset`) is also accepted, in which
-case its options are inherited, with the options of the expression taking priority.
+The resolved value of another numeric function (`:number`, `:integer`, `:offset`) is also accepted,
+in which case its options are inherited, with the options of the expression taking priority.
 
 #### Formatter
 
@@ -45,16 +45,34 @@ case its options are inherited, with the options of the expression taking priori
     - auto (default)
     - always
     - never
-    - min2 (treated as auto)
+    - min2 (grouping separators only for numbers with at least 5 integer digits)
 - `minimumIntegerDigits`
 - `minimumFractionDigits`
 - `maximumFractionDigits`
 - `minimumSignificantDigits`
 - `maximumSignificantDigits`
-- `numberingSystem` (implementation extension): a Unicode Number System Identifier
+- `roundingMode`
+    - ceil
+    - floor
+    - expand
+    - trunc
+    - halfCeil
+    - halfFloor
+    - halfExpand (default; ties away from zero, like `Intl.NumberFormat` and unlike Python's `round()`)
+    - halfTrunc
+    - halfEven
+- `roundingPriority`: which of the fraction and significant digits options wins when both are given
+    - auto (default; the significant digits options)
+    - morePrecision
+    - lessPrecision
+- `roundingIncrement`: 1 (default), 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500 or 5000,
+  in units of the last fraction digit; requires `minimumFractionDigits` and `maximumFractionDigits` to be equal
+- `trailingZeroDisplay`
+    - auto (default)
+    - stripIfInteger (no fraction digits when the rounded value is an integer)
 
 The digit options are *digit size options*: small non-negative integers (`0`-`99`).
-Not implemented: `trailingZeroDisplay`, `roundingPriority`, `roundingIncrement`, `roundingMode` (these are ignored).
+The numbering system is the default one of the locale (e.g. `Locale("ar", "EG")` uses Arabic-Indic digits).
 
 #### Selector
 
@@ -71,8 +89,9 @@ numeric keys (e.g. `1`), then (unless `select=exact`) matches the CLDR plural or
 
 ### `:integer`
 
-Same as `:number`, but the operand is truncated to an integer. The `minimumFractionDigits`, `maximumFractionDigits`
-and `minimumSignificantDigits` options of an annotated operand are discarded.
+Same as `:number`, but the operand is rounded to an integer (`halfExpand`: `1.5` becomes `2`, `-2.5` becomes `-3`).
+The `minimumFractionDigits`, `maximumFractionDigits` and `minimumSignificantDigits` options of an annotated operand
+are discarded.
 
 ### `:offset`
 
