@@ -63,7 +63,11 @@ class LazyValue:
         if formatter := ctx.registry.formatters.get(self.fn_name):
             try:
                 return str(formatter(value=self.value, locale=ctx.locale, options=self.options))
-            except MessageFunctionError:
+            except MessageFunctionError as e:
+                if e.result is not None and ctx.on_error is not None:
+                    # a non-fatal error: report it and use the result the function produced anyway
+                    ctx.on_error(e)
+                    return str(e.result)
                 raise
             except Exception as e:
                 msg = f"Exception raised while evaluating formatter :{self.fn_name}"
@@ -240,8 +244,23 @@ def check_select_option(options: ResolvedOptions) -> str:
 
 
 def format_numeric(number: Decimal, locale: Locale, options: ResolvedOptions) -> str:
-    """Format a number according to the `:number`/`:integer` options."""
-    check_select_option(options)
+    """Format a number according to the `:number`/`:integer` options.
+
+    An invalid `select` option is a Bad Option error, but does not affect the formatted result.
+    """
+    try:
+        check_select_option(options)
+    except BadOption as e:
+        select_error = e
+    else:
+        select_error = None
+    formatted = _format_numeric(number, locale, options)
+    if select_error is not None:
+        raise BadOption(str(select_error), result=formatted) from None
+    return formatted
+
+
+def _format_numeric(number: Decimal, locale: Locale, options: ResolvedOptions) -> str:
     sign_display = choice_option(options, "signDisplay", SIGN_DISPLAY, "auto") or "auto"
     use_grouping = choice_option(options, "useGrouping", USE_GROUPING, "auto") or "auto"
     numbering_system = options.get("numberingSystem", "default")

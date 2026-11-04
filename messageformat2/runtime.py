@@ -1,5 +1,6 @@
 import datetime as dt
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -8,7 +9,11 @@ from babel import Locale
 
 from messageformat2.builtins import LazyValue, Registry, ResolvedOptions
 from messageformat2.errors import (
+    BadOption,
     BadSelector,
+    MessageFormatError,
+    MessageFunctionError,
+    UnknownFunction,
     UnresolvedVariable,
 )
 from messageformat2.parser import (
@@ -32,20 +37,49 @@ from messageformat2.parser import (
 
 
 @dataclass
+class Fallback:
+    """The resolved value of an expression or variable which failed to resolve or format.
+
+    `source` is the string representation of the failed part: `$name` for a variable, `|literal|` for a literal
+    operand and `:function` for a function expression. It is formatted as `{source}`.
+    """
+
+    source: str
+
+    def __str__(self) -> str:
+        return f"{{{self.source}}}"
+
+
+@dataclass
 class FormattingContext:
     locale: Locale
     inputs: dict[str, Any]
     registry: Registry
     declarations: dict[str, Any]
-    strict: bool = True
+    on_error: Callable[[MessageFormatError], None] | None = None
+    """Error sink. If None, the first error is raised; otherwise errors are reported and fallback values used."""
+
+    def emit[T](self, error: MessageFormatError, fallback: T) -> T:
+        """Report an error: raise it in strict mode, otherwise pass it to `on_error` and return `fallback`."""
+        if self.on_error is None:
+            raise error
+        self.on_error(error)
+        return fallback
 
 
-def format_message(message: Message, locale: Locale, inputs: dict[str, Any], registry: Registry) -> str:
+def format_message(
+    message: Message,
+    locale: Locale,
+    inputs: dict[str, Any],
+    registry: Registry,
+    on_error: Callable[[MessageFormatError], None] | None = None,
+) -> str:
     ctx = FormattingContext(
         locale=locale,
         inputs=inputs,
         registry=registry,
         declarations={},
+        on_error=on_error,
     )
     match message:
         case PatternMessage():
@@ -77,12 +111,10 @@ def format_select_message(message: SelectMessage, ctx: FormattingContext) -> str
     for decl in message.declarations:
         ctx.declarations[decl.name] = decl
 
-    selectors = [resolve_selector(selector, ctx) for selector in message.selectors]
-
     pref = []
-    for i, selector in enumerate(selectors):
+    for i, selector in enumerate(message.selectors):
         keys = [key.value for v in message.variants if isinstance(key := v.keys[i], Literal)]
-        pref.append(selector.select(keys))
+        pref.append(select_keys(selector, keys, ctx))
 
     variants = filter_variants(pref, message.variants)
     pattern = sort_variants(pref, variants)
@@ -126,12 +158,22 @@ def sort_variants(pref: list, variants: list[Variant]) -> Pattern:
     return sortable[0][1].value  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
 
-def resolve_selector(selector: VariableRef, ctx: FormattingContext) -> LazyValue:
+def select_keys(selector: VariableRef, keys: list[str], ctx: FormattingContext) -> list[str]:
+    """Return the keys matched by a selector, best match first.
+
+    When the selector cannot be resolved or fails, a Bad Selector error is emitted and no key matches
+    (so only the catch-all `*` variants remain).
+    """
     resolved = resolve_variable(selector.name, ctx)
     if not isinstance(resolved, LazyValue):
         msg = f"Bad selector: ${selector.name} does not support selection"
-        raise BadSelector(msg)
-    return resolved
+        return ctx.emit(BadSelector(msg), [])
+    try:
+        return resolved.select(keys)
+    except BadSelector as e:
+        if ctx.on_error is not None and isinstance(e.__cause__, MessageFunctionError):
+            ctx.on_error(e.__cause__)
+        return ctx.emit(e, [])
 
 
 def format_expression(expression: Expression, ctx: FormattingContext) -> str:
@@ -139,7 +181,24 @@ def format_expression(expression: Expression, ctx: FormattingContext) -> str:
     match expression:
         case VariableExpression(annotation=None):
             resolved = apply_default_function(resolved, ctx)
+    if isinstance(resolved, LazyValue):
+        try:
+            return resolved.format()
+        except MessageFormatError as e:
+            resolved = ctx.emit(e, Fallback(expression_source(expression)))
     return str(resolved)
+
+
+def expression_source(expression: Expression) -> str:
+    """The fallback representation of an expression: its operand, or the function if it has no operand."""
+    match expression:
+        case LiteralExpression(arg=literal):
+            return str(literal)
+        case VariableExpression(arg=VariableRef(name=name)):
+            return f"${name}"
+        case FunctionExpression(annotation=FunctionAnnotation(name=name)):
+            return f":{name}"
+    raise TypeError(expression)
 
 
 def apply_default_function(resolved: Any, ctx: FormattingContext) -> Any:
@@ -162,15 +221,19 @@ def apply_default_function(resolved: Any, ctx: FormattingContext) -> Any:
 
 
 def format_markup(markup: Markup, ctx: FormattingContext) -> str:
+    # Markup resolution always succeeds: errors from option resolution are reported but non-fatal
+    options = resolve_options(markup.options, ctx)
     # When formatting to a string, the default representation of all markup is an empty string
     if ctx.registry.markup is None:
         return ""
-    return ctx.registry.markup(markup.kind, markup.name, resolve_options(markup.options, ctx))
+    return ctx.registry.markup(markup.kind, markup.name, options)
 
 
 def resolve_options(options: list[Option], ctx: FormattingContext) -> ResolvedOptions:
+    # An option whose value is a fallback value is omitted from the resolved options
+    values = {opt.name: resolve_option(opt, ctx) for opt in options}
     return ResolvedOptions(
-        {opt.name: resolve_option(opt, ctx) for opt in options},
+        {name: value for name, value in values.items() if not isinstance(value, Fallback)},
         literal=frozenset(opt.name for opt in options if isinstance(opt.value, Literal)),
     )
 
@@ -181,19 +244,30 @@ def resolve_option(option: Option, ctx: FormattingContext) -> Any:
             return value
         case VariableRef(name=name):
             resolved = resolve_variable(name, ctx)
-            match resolved:
-                case LazyValue() as lazy_value:
-                    return lazy_value.format()
-                case _:
-                    return resolved
+            if isinstance(resolved, LazyValue):
+                try:
+                    return resolved.format()
+                except MessageFormatError as e:
+                    resolved = ctx.emit(e, Fallback(f"${name}"))
+            if isinstance(resolved, Fallback):
+                msg = f"Bad option: the value of the option {option.name!r} (${name}) could not be resolved"
+                return ctx.emit(BadOption(msg), resolved)
+            return resolved
 
 
-def annotate(resolved: Any, fn_name: str, options: ResolvedOptions, ctx: FormattingContext) -> LazyValue:
-    """Apply the function `fn_name` to a resolved value.
+def annotate(resolved: Any, fn_name: str, options: ResolvedOptions, source: str, ctx: FormattingContext) -> Any:
+    """Apply the function `fn_name` to a resolved value (function resolution).
 
     If the value is already annotated (a `LazyValue`), it is passed to the function handler as its operand:
     whether and how the options of the operand are inherited is up to the function.
+    An unknown function is an Unknown Function error; if the operand is a fallback value or the function
+    is unknown, the resolved value is a fallback value with the given `source`.
     """
+    if fn_name not in ctx.registry.formatters and fn_name not in ctx.registry.selectors:
+        msg = f"Unknown function: {fn_name}"
+        return ctx.emit(UnknownFunction(msg), Fallback(source))
+    if isinstance(resolved, Fallback):
+        return Fallback(source)
     return LazyValue(fn_name=fn_name, value=resolved, options=options, ctx=ctx)
 
 
@@ -203,16 +277,16 @@ def resolve_expression(expression: Expression, ctx: FormattingContext) -> Any | 
             if not annotation:
                 return value
             options = resolve_options(annotation.options, ctx)
-            return LazyValue(fn_name=annotation.name, value=value, options=options, ctx=ctx)
+            return annotate(value, annotation.name, options, expression_source(expression), ctx)
         case VariableExpression(arg=VariableRef(ref), annotation=annotation):
             if not annotation:
                 return resolve_variable(ref, ctx)
             resolved = resolve_variable(ref, ctx)
             options = resolve_options(annotation.options, ctx)
-            return annotate(resolved, annotation.name, options, ctx)
+            return annotate(resolved, annotation.name, options, f"${ref}", ctx)
         case FunctionExpression(annotation=FunctionAnnotation(name=name, options=options)):
             options = resolve_options(options, ctx)
-            return LazyValue(fn_name=name, value=None, options=options, ctx=ctx)
+            return annotate(None, name, options, f":{name}", ctx)
 
 
 def resolve_variable(name: str, ctx: FormattingContext) -> Any:
@@ -224,10 +298,11 @@ def resolve_variable(name: str, ctx: FormattingContext) -> Any:
                 if not annotation:
                     return resolved
                 options = resolve_options(annotation.options, ctx)
-                return annotate(resolved, annotation.name, options, ctx)
+                return annotate(resolved, annotation.name, options, f"${name}", ctx)
             case _:
-                expression = decl.value
-                return resolve_expression(expression, ctx)
+                resolved = resolve_expression(decl.value, ctx)
+                # The fallback value of a variable is `$name`, whatever the declaration contained
+                return Fallback(f"${name}") if isinstance(resolved, Fallback) else resolved
     return resolve_global(name, ctx)
 
 
@@ -239,4 +314,4 @@ def resolve_global(name: str, ctx: FormattingContext) -> Any:
         if unicodedata.normalize("NFC", key) == name:
             return value
     msg = f"Unresolved variable: {name}"
-    raise UnresolvedVariable(msg)
+    return ctx.emit(UnresolvedVariable(msg), Fallback(f"${name}"))

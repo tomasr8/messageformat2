@@ -48,7 +48,7 @@ class Literal(Node):
     value: str
 
     def __str__(self) -> str:
-        value = self.value.replace("|", r"\|").replace("\\", r"\\")
+        value = self.value.replace("\\", r"\\").replace("|", r"\|")
         return f"|{value}|"
 
 

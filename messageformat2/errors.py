@@ -146,7 +146,16 @@ class MessageFunctionError(FormatError):
 
     Any other exception raised by a custom formatter or selector is wrapped in this error.
     Custom functions can raise one of the subclasses below to signal a specific error.
+
+    A function which can still produce a result despite the error (the spec often says
+    "emit a Bad Option error and ignore the option") passes it as `result`: when formatting
+    with an `on_error` handler, the error is reported and the result is used instead of a
+    fallback value.
     """
+
+    def __init__(self, *args: object, result: object = None) -> None:
+        super().__init__(*args)
+        self.result = result
 
 
 class BadOperand(MessageFunctionError):

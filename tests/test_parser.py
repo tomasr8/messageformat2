@@ -401,3 +401,12 @@ def test_variable_name(name):
 def test_invalid_name(message):
     with pytest.raises(ParseError):
         parse(message)
+
+
+@pytest.mark.parametrize(
+    ("value", "quoted"),
+    [("foo", "|foo|"), ("a|b", "|a\\|b|"), ("a\\b", "|a\\\\b|"), ("a\\|b", "|a\\\\\\|b|"), ("", "||")],
+)
+def test_literal_str_escapes(value, quoted):
+    assert str(Literal(value=value)) == quoted
+    assert parse(f"{{{quoted}}}").pattern[0].arg.value == value  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]

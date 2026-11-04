@@ -47,3 +47,26 @@ try:
 except FormatError as e:
     print(e)  # -> Unresolved variable
 ```
+
+## Formatting with fallback values
+
+By default the first formatting error is raised and no output is produced. The spec requires
+that a valid message can always be formatted, with
+[fallback values](https://github.com/unicode-org/message-format-wg/blob/main/spec/formatting.md#fallback-resolution)
+standing in for the parts that failed. Pass an `on_error` callback to get this behaviour: every error is
+passed to the callback instead of being raised, and formatting continues.
+
+```python
+from messageformat2.message import Message
+
+errors = []
+msg = Message("Hello, {$name}! You have {$count :number} messages.")
+msg.format({"count": "many"}, on_error=errors.append)
+# -> "Hello, {$name}! You have {$count} messages."
+errors
+# -> [UnresolvedVariable('Unresolved variable: name'), BadOperand("Bad operand: 'many' is not a number")]
+```
+
+The fallback value is `{$name}` for a variable, `{|literal|}` for a literal operand and `{:function}` for a
+function without an operand. An option whose value cannot be resolved is omitted, and a selector which fails
+only matches the catch-all key `*`. Syntax and data model errors are still raised by `Message()`.

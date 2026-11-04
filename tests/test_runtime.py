@@ -8,11 +8,14 @@ from babel import Locale
 from messageformat2 import Message
 from messageformat2.builtins import LazyValue, xml_markup
 from messageformat2.errors import (
+    BadOperand,
     BadOption,
     BadSelector,
+    MessageFormatError,
     MessageFunctionError,
     ParseError,
     UnknownFunction,
+    UnresolvedVariable,
 )
 
 
@@ -364,3 +367,92 @@ def test_selector_errors_are_bad_selector_errors():
 def test_unannotated_variables_are_formatted_by_type(value, locale, formatted):
     assert Message("{$x}").format({"x": value}, locale) == formatted
     assert Message(".local $y = {$x} {{{$y}}}").format({"x": value}, locale) == formatted
+
+
+def format_with_errors(message, inputs=None, **kwargs) -> tuple[str, list[type]]:
+    errors: list[MessageFormatError] = []
+    formatted = Message(message).format(inputs, "en", on_error=errors.append, **kwargs)
+    return formatted, [type(e) for e in errors]
+
+
+@pytest.mark.parametrize(
+    ("message", "inputs", "formatted", "errors"),
+    [
+        ("Hello, {$name}!", {}, "Hello, {$name}!", [UnresolvedVariable]),
+        ("{$x :number}", {}, "{$x}", [UnresolvedVariable]),
+        ("{$x :unknown}", {}, "{$x}", [UnresolvedVariable, UnknownFunction]),
+        ("{foo :unknown}", {}, "{|foo|}", [UnknownFunction]),
+        ("{|a\\\\b\\|c| :unknown}", {}, "{|a\\\\b\\|c|}", [UnknownFunction]),
+        ("{:unknown}", {}, "{:unknown}", [UnknownFunction]),
+        ("{:ns:unknown opt=1}", {}, "{:ns:unknown}", [UnknownFunction]),
+        ("{horse :number}", {}, "{|horse|}", [BadOperand]),
+        ("{$x :number}", {"x": "horse"}, "{$x}", [BadOperand]),
+        (".local $n = {horse :number} {{{$n}}}", {}, "{$n}", [BadOperand]),
+        (".local $n = {|val| :unknown} {{{$n :number}}}", {}, "{$n}", [UnknownFunction]),
+        (".local $n = {$x} {{{$n}}}", {}, "{$n}", [UnresolvedVariable]),
+        (".input {$x :number} {{{$x}}}", {}, "{$x}", [UnresolvedVariable]),
+        # an option whose value cannot be resolved is omitted (Bad Option) and the rest formatted
+        ("{42 :number minimumFractionDigits=$d}", {}, "42", [UnresolvedVariable, BadOption]),
+        # a non-fatal function error: the option is ignored but the result is used
+        ("{42 :number select=$s}", {"s": "exact"}, "42", [BadOption]),
+        # markup resolution always succeeds
+        ("{#b opt=$x}bold{/b}", {}, "bold", [UnresolvedVariable, BadOption]),
+        # the rest of the pattern is unaffected
+        ("a {$x} b {$y} c", {"y": 1}, "a {$x} b 1 c", [UnresolvedVariable]),
+    ],
+)
+def test_fallback_values(message, inputs, formatted, errors):
+    assert format_with_errors(message, inputs) == (formatted, errors)
+
+
+@pytest.mark.parametrize(
+    ("message", "inputs", "formatted", "errors"),
+    [
+        # an unresolved selector only matches the catch-all variant
+        (".input {$n :number} .match $n 1 {{one}} * {{other}}", {}, "other", [UnresolvedVariable, BadSelector]),
+        (".local $n = {1 :unknown} .match $n 1 {{one}} * {{other}}", {}, "other", [UnknownFunction, BadSelector]),
+        (".local $d = {|2024-05-01| :date} .match $d * {{{$d}}}", {}, "May 1, 2024", [BadSelector]),
+        # a selector error on one selector does not affect the others
+        (
+            ".input {$x :number} .input {$y :number} .match $x $y 1 1 {{1,1}} 1 * {{1,*}} * 1 {{*,1}} * * {{*,*}}",
+            {"y": 1},
+            "*,1",
+            [UnresolvedVariable, BadSelector],
+        ),
+        # a function error during selection is reported along with the Bad Selector error
+        (
+            ".local $n = {1 :number select=$s} .match $n 1 {{one}} * {{other}}",
+            {"s": "exact"},
+            "other",
+            [BadOption, BadSelector],
+        ),
+    ],
+)
+def test_fallback_selection(message, inputs, formatted, errors):
+    assert format_with_errors(message, inputs) == (formatted, errors)
+
+
+def test_strict_mode_raises_the_first_error():
+    with pytest.raises(UnresolvedVariable):
+        Message("{$x :unknown}").format()
+    with pytest.raises(UnknownFunction):
+        Message("{foo :unknown}").format()
+
+
+def test_non_fatal_function_error_in_strict_mode():
+    # without an error handler, a non-fatal error is still raised
+    with pytest.raises(BadOption):
+        Message("{42 :number select=$s}").format({"s": "exact"})
+
+
+def test_custom_function_non_fatal_error():
+    def shout(value, locale, options) -> str:  # noqa: ARG001
+        result = str(value).upper()
+        if "volume" in options and options["volume"] != "loud":
+            msg = "volume must be loud"
+            raise BadOption(msg, result=result)
+        return result
+
+    assert format_with_errors("{hi :shout volume=quiet}", formatters={"shout": shout}) == ("HI", [BadOption])
+    with pytest.raises(BadOption):
+        Message("{hi :shout volume=quiet}").format(formatters={"shout": shout})

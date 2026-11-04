@@ -55,6 +55,20 @@ defined by the spec: `BadOperand` (wrong operand type or format), `BadOption` (i
 option value), `BadVariantKey` (a variant key the selector cannot interpret) or `UnsupportedOperation`.
 These are reraised as-is.
 
+If the function can produce a result despite the error (the spec often asks to "emit a Bad Option error and
+ignore the option"), pass it as `result`: when the message is formatted with an `on_error` callback
+(see [Error handling](errors.md)), the error is reported and the result is used; otherwise the error is raised.
+
+```python
+from messageformat2.errors import BadOption
+
+def shout(value, locale, options) -> str:
+    result = str(value).upper()
+    if options.get("volume", "loud") != "loud":
+        raise BadOption("volume must be loud", result=result)
+    return result
+```
+
 ## Annotated operands
 
 If the operand of your formatter is a variable that was already annotated with a function,

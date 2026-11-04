@@ -23,6 +23,7 @@ from messageformat2.errors import (
     BadOption,
     BadSelector,
     BadVariantKey,
+    DataModelError,
     DuplicateDeclaration,
     DuplicateOptionName,
     DuplicateVariant,
@@ -175,8 +176,7 @@ def load_tests() -> list[Any]:
     return params
 
 
-@pytest.mark.parametrize("test", load_tests())
-def test_spec(test: dict[str, Any]) -> None:
+def run(test: dict[str, Any], on_error: Any = None) -> str:
     locale = test.get("locale", "en-US").replace("-", "_")
     if locale == "und":
         locale = "en"
@@ -186,19 +186,53 @@ def test_spec(test: dict[str, Any]) -> None:
         if param.get("type") == "datetime":
             value = dt.datetime.fromisoformat(value)
         inputs[param["name"]] = value
-    expected_errors = [ERRORS[error["type"]] for error in test.get("expErrors", [])]
+    return Message(test["src"]).format(inputs, locale, formatters=FORMATTERS, selectors=SELECTORS, on_error=on_error)
+
+
+def expected_output(test: dict[str, Any]) -> str | None:
     expected = test.get("exp")
     if expected is not None and test.get("bidiIsolation") == "default":
         expected = BIDI_ISOLATES.sub("", expected)
+    return expected
 
+
+@pytest.mark.parametrize("test", load_tests())
+def test_spec_strict(test: dict[str, Any]) -> None:
+    """Strict mode: the first error is raised and must be one of the expected ones."""
+    expected_errors = [ERRORS[error["type"]] for error in test.get("expErrors", [])]
     try:
-        formatted = Message(test["src"]).format(inputs, locale, formatters=FORMATTERS, selectors=SELECTORS)
+        formatted = run(test)
     except MessageFormatError as e:
         error = e
     else:
         assert not expected_errors, f"expected one of {expected_errors}, got {formatted!r}"
+        expected = expected_output(test)
         if expected is not None:
             assert formatted == expected
         return
     assert expected_errors, f"unexpected error: {error!r}"
     assert isinstance(error, tuple(expected_errors)), f"got {error!r}, expected one of {expected_errors}"
+
+
+@pytest.mark.parametrize("test", load_tests())
+def test_spec_fallback(test: dict[str, Any]) -> None:
+    """Fallback mode: errors are collected, the output must match `exp` (with fallback values) exactly."""
+    expected_errors = {ERRORS[error["type"]] for error in test.get("expErrors", [])}
+    errors: list[MessageFormatError] = []
+    try:
+        formatted = run(test, on_error=errors.append)
+    except (ParseError, DataModelError) as e:  # syntax and data model errors are always raised
+        error = e
+    else:
+        error = None
+    if error is not None:
+        assert type(error) in expected_errors, f"got {error!r}, expected one of {expected_errors}"
+        return
+    if expected_errors:
+        assert errors, f"expected one of {expected_errors}, got {formatted!r} without errors"
+        assert expected_errors & {type(e) for e in errors}, f"got {errors!r}, expected one of {expected_errors}"
+    else:
+        assert not errors, f"unexpected errors: {errors!r}"
+    expected = expected_output(test)
+    if expected is not None:
+        assert formatted == expected
