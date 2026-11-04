@@ -1,13 +1,12 @@
 from messageformat2.parser import (
     content_char,
+    escaped_char,
     markup_start,
     quoted_char,
-    quoted_escape,
     reserved_char,
     reserved_escape,
     simple_start_char,
     text_char,
-    text_escape,
     whitespace,
 )
 
@@ -18,19 +17,17 @@ def test_whitespace():
         assert whitespace.match(c) is not None
 
 
-def test_text_escape():
-    assert text_escape.match(r"\\") is not None
-    assert text_escape.match(r"\{") is not None
-    assert text_escape.match(r"\}") is not None
-
-
-def test_quoted_escape():
-    assert quoted_escape.match(r"\\") is not None
-    assert quoted_escape.match(r"\|") is not None
+def test_escaped_char():
+    assert escaped_char.match(r"\\") is not None
+    assert escaped_char.match(r"\{") is not None
+    assert escaped_char.match(r"\|") is not None
+    assert escaped_char.match(r"\}") is not None
+    assert escaped_char.match(r"\n") is None
+    assert escaped_char.match(r"\\\\") is not None
 
 
 def test_reserved_escape():
-    assert quoted_escape.match(r"\\") is not None
+    assert reserved_escape.match(r"\\") is not None
     assert reserved_escape.match(r"\{") is not None
     assert reserved_escape.match(r"\|") is not None
     assert reserved_escape.match(r"\}") is not None

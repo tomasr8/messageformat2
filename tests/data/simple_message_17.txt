@@ -1,0 +1,8 @@
+PatternMessage(
+    declarations=[],
+    pattern=[
+        "Hello, ",
+        LiteralExpression(arg=Literal(value="braces { } are escapable too"), annotation=None, attributes=[]),
+        "!",
+    ],
+)

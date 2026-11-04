@@ -45,8 +45,9 @@ number_literal = re.compile(r"^-?(?:(?:0|[1-9])\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
 _whitespace = r"[\s\u3000]"
 whitespace = re.compile(f"^{_whitespace}")
 
-text_escape = re.compile(r"^\\[\\{}]")
-quoted_escape = re.compile(r"^\\[\\|]")
+# escaped-char = backslash ( backslash / "{" / "|" / "}" )
+# The same escapes are valid in text and in quoted literals.
+escaped_char = re.compile(r"^\\[\\{|}]")
 _reserved_escape = r"^\\[\\{|}]"
 reserved_escape = re.compile(f"^{_reserved_escape}")
 
@@ -166,7 +167,7 @@ def parse_simple_message(queue: Queue) -> PatternMessage:
     leading = parse_optional_whitespace(queue)
     if not queue:
         return PatternMessage(declarations=[], pattern=[leading] if leading else [])
-    if queue.peek() != "{" and not queue.matches(simple_start_char) and not queue.matches(text_escape):
+    if queue.peek() != "{" and not queue.matches(simple_start_char) and not queue.matches(escaped_char):
         msg = f"Invalid character at the start of a simple message: {queue.peek()}"
         raise ParseError(msg)
     pattern = parse_pattern(queue)
@@ -279,9 +280,8 @@ def parse_pattern(queue: Queue) -> Pattern:
     while queue and not queue.matches(quoted_pattern_end):
         if queue.matches(text_char):
             string += queue.pop()
-        elif queue.matches(text_escape):
-            escape = queue.pop_match(text_escape)
-            string += escape.replace(r"\{", "{").replace(r"\}", "}").replace(r"\\", "\\")
+        elif queue.matches(escaped_char):
+            string += queue.pop_match(escaped_char)[1]
         else:
             if string:
                 pattern.append(string)
@@ -517,12 +517,8 @@ def parse_quoted_literal(queue: Queue) -> Literal:
     literal = ""
     queue.pop("|")
     while True:
-        if queue.matches(quoted_escape):
-            escape = queue.pop_match(quoted_escape)
-            if escape == r"\\":
-                literal += "\\"
-            else:
-                literal += "|"
+        if queue.matches(escaped_char):
+            literal += queue.pop_match(escaped_char)[1]
         elif queue.matches(quoted_char):
             literal += queue.pop()
         else:

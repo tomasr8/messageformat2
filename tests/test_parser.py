@@ -41,6 +41,7 @@ def ruff_format(source):
         "Hello, {#strong}John{/strong}!",
         "Hello, {#strong opt=42 @attr}John{/strong}!",
         "Hello, {#strong text=|John| /}!",
+        "Hello, {|braces \\{ \\} are escapable too|}!",
     ],
     ids=itertools.count(1),
 )
@@ -58,6 +59,7 @@ def test_parse_simple_message(request, snapshot, message):
     [
         r"\\ backslash escape \\",
         r"\{ brace escape \}",
+        r"\| pipe escape \|",
     ],
     ids=itertools.count(1),
 )
