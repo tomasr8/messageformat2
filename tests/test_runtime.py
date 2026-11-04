@@ -535,3 +535,19 @@ def test_u_options_are_not_passed_to_the_function():
 
     message = "{x :fn a=1 u:dir=ltr u:id=foo u:other=1}"
     assert Message(message).format(formatters={"fn": fn}, bidi_isolation="none") == "a,u:other"
+
+
+def test_declarations_are_resolved_once():
+    calls = []
+
+    def fn(value, locale, options) -> str:  # noqa: ARG001
+        calls.append(value)
+        return str(value)
+
+    message = ".local $x = {$missing :fn} .local $y = {$x :fn} {{{$x} {$y} {$x}}}"
+    errors: list[MessageFormatError] = []
+    out = Message(message).format({}, formatters={"fn": fn}, on_error=errors.append, bidi_isolation="none")
+    assert out == "{$x} {$y} {$x}"
+    # the unresolved variable is reported once, not once per reference
+    assert [type(e) for e in errors] == [UnresolvedVariable]
+    assert calls == []

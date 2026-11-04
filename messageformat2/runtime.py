@@ -1,7 +1,7 @@
 import datetime as dt
 import unicodedata
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 from typing import Literal as TypingLiteral
@@ -62,6 +62,8 @@ class FormattingContext:
     inputs: dict[str, Any]
     registry: Registry
     declarations: dict[str, Any]
+    resolved: dict[str, Any] = field(default_factory=dict)
+    """The resolved values of the declared variables which have been referenced so far."""
     on_error: Callable[[MessageFormatError], None] | None = None
     """Error sink. If None, the first error is raised; otherwise errors are reported and fallback values used."""
     bidi_isolation: BidiIsolation = "default"
@@ -351,20 +353,26 @@ def resolve_expression(expression: Expression, ctx: FormattingContext) -> Any | 
 
 
 def resolve_variable(name: str, ctx: FormattingContext) -> Any:
-    if name in ctx.declarations:
-        decl = ctx.declarations[name]
-        match decl:
-            case InputDeclaration(value=VariableExpression(annotation=annotation)):
-                resolved = resolve_global(name, ctx)
-                if not annotation:
-                    return resolved
-                options = resolve_options(annotation.options, ctx)
-                return annotate(resolved, annotation.name, options, f"${name}", ctx)
-            case _:
-                resolved = resolve_expression(decl.value, ctx)
-                # The fallback value of a variable is `$name`, whatever the declaration contained
-                return Fallback(f"${name}") if isinstance(resolved, Fallback) else resolved
-    return resolve_global(name, ctx)
+    if name not in ctx.declarations:
+        return resolve_global(name, ctx)
+    # A declaration is resolved (and its errors reported) once, however often the variable is referenced
+    if name not in ctx.resolved:
+        ctx.resolved[name] = resolve_declaration(name, ctx)
+    return ctx.resolved[name]
+
+
+def resolve_declaration(name: str, ctx: FormattingContext) -> Any:
+    match ctx.declarations[name]:
+        case InputDeclaration(value=VariableExpression(annotation=annotation)):
+            resolved = resolve_global(name, ctx)
+            if not annotation:
+                return resolved
+            options = resolve_options(annotation.options, ctx)
+            return annotate(resolved, annotation.name, options, f"${name}", ctx)
+        case decl:
+            resolved = resolve_expression(decl.value, ctx)
+            # The fallback value of a variable is `$name`, whatever the declaration contained
+            return Fallback(f"${name}") if isinstance(resolved, Fallback) else resolved
 
 
 def resolve_global(name: str, ctx: FormattingContext) -> Any:
