@@ -1,5 +1,7 @@
+import datetime as dt
 import unicodedata
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from babel import Locale
@@ -133,7 +135,30 @@ def resolve_selector(selector: VariableRef, ctx: FormattingContext) -> LazyValue
 
 
 def format_expression(expression: Expression, ctx: FormattingContext) -> str:
-    return str(resolve_expression(expression, ctx))
+    resolved = resolve_expression(expression, ctx)
+    match expression:
+        case VariableExpression(annotation=None):
+            resolved = apply_default_function(resolved, ctx)
+    return str(resolved)
+
+
+def apply_default_function(resolved: Any, ctx: FormattingContext) -> Any:
+    """Format an unannotated variable according to its type, e.g. a number as if it were annotated with `:number`."""
+    if isinstance(resolved, bool):
+        return resolved
+    if isinstance(resolved, (int, float, Decimal)):
+        fn_name = "number"
+    elif isinstance(resolved, dt.datetime):
+        fn_name = "datetime"
+    elif isinstance(resolved, dt.date):
+        fn_name = "date"
+    elif isinstance(resolved, dt.time):
+        fn_name = "time"
+    else:
+        return resolved
+    if fn_name not in ctx.registry.formatters:
+        return resolved
+    return LazyValue(fn_name=fn_name, value=resolved, options=ResolvedOptions(), ctx=ctx)
 
 
 def format_markup(markup: Markup, ctx: FormattingContext) -> str:

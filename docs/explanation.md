@@ -20,6 +20,13 @@ msg.format(formatters={'side_effect': formatter_with_side_effect})
 print(counter)  # -> 2
 ```
 
+## Unannotated variables
+
+A placeholder consisting only of a variable (`{$x}`) is formatted according to the type of its value:
+numbers (`int`, `float`, `Decimal`) as if annotated with `:number`, `datetime`, `date` and `time` values with
+`:datetime`, `:date` and `:time`. Anything else is formatted with `str()`.
+Literals are always strings, so `{|1234.5|}` is formatted verbatim.
+
 ## Function composition
 
 A variable which was annotated with a function can be annotated again, for example in a placeholder.

@@ -1,3 +1,5 @@
+import datetime as dt
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -342,3 +344,23 @@ def test_selector_errors_are_bad_selector_errors():
     with pytest.raises(BadSelector) as excinfo:
         Message(message).format(None, "en", formatters={"bad": date}, selectors={"bad": bad})
     assert isinstance(excinfo.value.__cause__, BadOption)
+
+
+@pytest.mark.parametrize(
+    ("value", "locale", "formatted"),
+    [
+        (1234.5, "en", "1,234.5"),
+        (1234.5, "fr", "1\u202f234,5"),
+        (1234567, "de", "1.234.567"),
+        (Decimal("0.10"), "en", "0.1"),
+        (True, "en", "True"),
+        ("1234.5", "en", "1234.5"),
+        (dt.datetime(2006, 1, 2, 15, 4, 6), "en", "Jan 2, 2006, 3:04:06\u202fPM"),  # noqa: DTZ001
+        (dt.date(2006, 1, 2), "en", "1/2/06"),
+        (dt.time(15, 4), "en", "3:04\u202fPM"),
+        (None, "en", "None"),
+    ],
+)
+def test_unannotated_variables_are_formatted_by_type(value, locale, formatted):
+    assert Message("{$x}").format({"x": value}, locale) == formatted
+    assert Message(".local $y = {$x} {{{$y}}}").format({"x": value}, locale) == formatted
