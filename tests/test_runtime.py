@@ -355,9 +355,9 @@ def test_selector_errors_are_bad_selector_errors():
         (Decimal("0.10"), "en", "0.1"),
         (True, "en", "True"),
         ("1234.5", "en", "1234.5"),
-        (dt.datetime(2006, 1, 2, 15, 4, 6), "en", "Jan 2, 2006, 3:04:06\u202fPM"),  # noqa: DTZ001
-        (dt.date(2006, 1, 2), "en", "1/2/06"),
-        (dt.time(15, 4), "en", "3:04\u202fPM"),
+        (dt.datetime(2006, 1, 2, 15, 4, 6), "en", "Jan 2, 2006, 3:04 PM"),  # noqa: DTZ001
+        (dt.date(2006, 1, 2), "en", "Jan 2, 2006"),
+        (dt.time(15, 4), "en", "3:04 PM"),
         (None, "en", "None"),
     ],
 )

@@ -1,13 +1,13 @@
 import copy
-import datetime as _datetime
+import datetime as dt
 import re
 import unicodedata
+import zoneinfo
 from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, ROUND_HALF_EVEN, Context, Decimal
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
 from babel import Locale
-from babel.dates import format_date as _format_date
 from babel.dates import format_datetime as _format_datetime
 from babel.dates import format_time as _format_time
 from babel.dates import match_skeleton
@@ -96,19 +96,6 @@ class LazyValue:
         return f"LazyValue({self.fn_name}({self.value!r}, {dict(self.options)!r}))"
 
 
-def format_skeleton(
-    skeleton: str,
-    dt: _datetime.datetime,
-    locale: Locale,
-) -> str:
-    locale = Locale.parse(locale)
-    matched = skeleton
-    if skeleton not in locale.datetime_skeletons:
-        matched = match_skeleton(skeleton, locale.datetime_skeletons, allow_different_fields=True)
-    fmt = locale.datetime_skeletons[matched]
-    return _format_datetime(dt, format=fmt, locale=locale)
-
-
 class Formatter(Protocol):
     def __call__(self, value: Any, locale: Locale, options: ResolvedOptions) -> Any: ...
 
@@ -192,8 +179,11 @@ def digit_size_option(options: dict[str, Any], name: str) -> int | None:
     return int(value)
 
 
-def choice_option(options: dict[str, Any], name: str, choices: frozenset[str], default: str) -> str:
-    value = options.get(name, default)
+def choice_option(options: dict[str, Any], name: str, choices: frozenset[str], default: str | None) -> str | None:
+    """Return the value of an option which must be one of `choices` (`default` if the option is not set)."""
+    if name not in options:
+        return default
+    value = options[name]
     if value not in choices:
         msg = f"Bad option: {name}={value!r} is not one of {sorted(choices)}"
         raise BadOption(msg)
@@ -246,14 +236,14 @@ def check_select_option(options: ResolvedOptions) -> str:
     if "select" in options and "select" not in options.literal:
         msg = "Bad option: the 'select' option must be set by a literal"
         raise BadOption(msg)
-    return choice_option(options, "select", SELECT, "plural")
+    return choice_option(options, "select", SELECT, "plural") or "plural"
 
 
 def format_numeric(number: Decimal, locale: Locale, options: ResolvedOptions) -> str:
     """Format a number according to the `:number`/`:integer` options."""
     check_select_option(options)
-    sign_display = choice_option(options, "signDisplay", SIGN_DISPLAY, "auto")
-    use_grouping = choice_option(options, "useGrouping", USE_GROUPING, "auto")
+    sign_display = choice_option(options, "signDisplay", SIGN_DISPLAY, "auto") or "auto"
+    use_grouping = choice_option(options, "useGrouping", USE_GROUPING, "auto") or "auto"
     numbering_system = options.get("numberingSystem", "default")
     min_int = digit_size_option(options, "minimumIntegerDigits")
     min_frac = digit_size_option(options, "minimumFractionDigits")
@@ -367,145 +357,179 @@ def offset_selector(value: Any, locale: Locale, options: ResolvedOptions, keys: 
     return select_numeric(number, locale, ResolvedOptions(inherited, literal=options.literal), keys)
 
 
-def format_datetime(  # noqa: PLR0913, PLR0915, PLR0917
-    dt: _datetime.datetime,
-    locale: Locale,
-    dateStyle: Literal["full", "long", "medium", "short"] | None = None,
-    timeStyle: Literal["full", "long", "medium", "short"] | None = None,  # noqa: ARG001
-    weekday: Literal["long", "short", "narrow"] | None = None,
-    era: Literal["long", "short", "narrow"] | None = None,
-    year: Literal["numeric", "2-digit"] | None = None,
-    month: Literal["numeric", "2-digit", "long", "short", "narrow"] | None = None,
-    day: Literal["numeric", "2-digit"] | None = None,
-    hour: Literal["numeric", "2-digit"] | None = None,
-    minute: Literal["numeric", "2-digit"] | None = None,
-    second: Literal["numeric", "2-digit"] | None = None,
-    fractionalSecondDigits: Literal["1", "2", "3"] | None = None,
-    hourCycle: Literal["h11", "h12", "h23", "h24"] | None = None,
-    timeZoneName: Literal["long", "short", "shortOffset", "longOffset", "shortGeneric", "longGeneric"] | None = None,  # noqa: ARG001
-    **kwargs,  # noqa: ARG001
-) -> str:
-    if dateStyle:
-        return _format_datetime(dt, format=dateStyle, locale=locale)
-
-    skeleton = ""
-    if weekday:
-        if weekday == "short":
-            skeleton += "EEE"
-        elif weekday == "long":
-            skeleton += "EEEE"
-        else:
-            skeleton += "EEEEE"
-    if era:
-        if era == "short":
-            skeleton += "GGG"
-        elif era == "long":
-            skeleton += "GGGG"
-        else:
-            skeleton += "GGGGG"
-
-    if year:
-        if year == "numeric":
-            skeleton += "y"
-        else:
-            skeleton += "yy"
-
-    if month:
-        if month == "numeric":
-            skeleton += "M"
-        elif month == "2-digit":
-            skeleton += "MM"
-        elif month == "short":
-            skeleton += "MMM"
-        elif month == "narrow":
-            skeleton += "MMMMM"
-        else:
-            skeleton += "MMMM"
-
-    if day:
-        if day == "numeric":
-            skeleton += "d"
-        else:
-            skeleton += "dd"
-
-    if hour:
-        h = "h"
-        if hourCycle:
-            if hourCycle == "h11":
-                h = "K"
-            elif hourCycle == "h12":
-                h = "h"
-            elif hourCycle == "h23":
-                h = "H"
-            elif hourCycle == "h24":
-                h = "k"
-
-        if hour == "numeric":
-            skeleton += f"{h}"
-        else:
-            skeleton += f"{h}{h}"
-
-    if minute:
-        if minute == "numeric":
-            skeleton += "m"
-        else:
-            skeleton += "mm"
-
-    if second:
-        if second == "numeric":
-            skeleton += "s"
-        else:
-            skeleton += "ss"
-
-    if fractionalSecondDigits:
-        if fractionalSecondDigits == "1":
-            skeleton += "S"
-        elif fractionalSecondDigits == "2":
-            skeleton += "SS"
-        else:
-            skeleton += "SSS"
-
-    return format_skeleton(skeleton, dt, locale=locale)
+DATETIME_FUNCTIONS = frozenset({"datetime", "date", "time"})
+# Options which are inherited from an annotated date/time operand
+DATETIME_OVERRIDE_OPTIONS = ("timeZone", "hour12", "calendar")
+DATE_FIELDS = frozenset(
+    {"weekday", "day-weekday", "month-day", "month-day-weekday", "year-month-day", "year-month-day-weekday"}
+)
+DATE_LENGTH = frozenset({"long", "medium", "short"})
+TIME_PRECISION = frozenset({"hour", "minute", "second"})
+TIME_ZONE_STYLE = frozenset({"long", "short"})
+HOUR12 = frozenset({"true", "false"})
+# Skeletons (or standard formats, as "std:<length>") for the date part, by (fields, length)
+_DATE_SKELETONS = {
+    ("year-month-day", "short"): "std:short",
+    ("year-month-day", "medium"): "std:medium",
+    ("year-month-day", "long"): "std:long",
+    ("year-month-day-weekday", "short"): "yMEd",
+    ("year-month-day-weekday", "medium"): "yMMMEd",
+    ("year-month-day-weekday", "long"): "std:full",
+    ("month-day", "short"): "Md",
+    ("month-day", "medium"): "MMMd",
+    ("month-day", "long"): "MMMMd",
+    ("month-day-weekday", "short"): "MEd",
+    ("month-day-weekday", "medium"): "MMMEd",
+    ("month-day-weekday", "long"): "MMMMEEEEd",
+    ("day-weekday", "short"): "Ed",
+    ("day-weekday", "medium"): "Ed",
+    ("day-weekday", "long"): "EEEEd",
+    ("weekday", "short"): "E",
+    ("weekday", "medium"): "E",
+    ("weekday", "long"): "EEEE",
+}
+_TIME_ZONE_OFFSET = re.compile(r"^[+-](?:0[0-9]|1[0-3]):[0-5][0-9]$|^[+-]14:00$")
 
 
-def datetime_formatter(value: Any, locale: Locale, options: dict[str, Any]) -> str:
+def datetime_operand(value: Any, options: ResolvedOptions) -> tuple[Any, ResolvedOptions]:
+    """Resolve the operand of a date/time function.
+
+    The operand is a `datetime`, `date` or `time`, an ISO 8601 date or datetime string, or the resolved value
+    of another date/time function, in which case its date/time override options are inherited.
+    """
+    if isinstance(value, LazyValue):
+        if value.fn_name not in DATETIME_FUNCTIONS:
+            msg = f"Bad operand: the resolved value of :{value.fn_name} cannot be used as a date/time operand"
+            raise BadOperand(msg)
+        operand, inherited = datetime_operand(value.value, value.options)
+        inherited = {k: v for k, v in inherited.items() if k in DATETIME_OVERRIDE_OPTIONS}
+        return operand, ResolvedOptions({**inherited, **options}, literal=options.literal)
     if isinstance(value, str):
-        value = _datetime.datetime.fromisoformat(value)
-    return _format_datetime(value, locale=locale, **options)
+        try:
+            return dt.datetime.fromisoformat(value), options
+        except ValueError as e:
+            msg = f"Bad operand: {value!r} is not an ISO 8601 date or datetime"
+            raise BadOperand(msg) from e
+    if isinstance(value, (dt.datetime, dt.date, dt.time)):
+        return value, options
+    msg = f"Bad operand: {value!r} is not a date/time value"
+    raise BadOperand(msg)
 
 
-def format_date(
-    dt: _datetime.datetime,
-    *,
-    locale: Locale,
-    style: Literal["full", "long", "medium", "short"] = "short",
-    **kwargs,  # noqa: ARG001
-) -> str:
-    return _format_date(dt, format=style, locale=locale)
+def literal_option(options: ResolvedOptions, name: str, choices: frozenset[str], default: str | None) -> str | None:
+    """Return the value of an option which must be set by a literal, validated against `choices`."""
+    if name not in options:
+        return default
+    if name not in options.literal:
+        msg = f"Bad option: the {name!r} option must be set by a literal"
+        raise BadOption(msg)
+    return choice_option(options, name, choices, default)
 
 
-def date_formatter(value: Any, locale: Locale, options: dict[str, Any]) -> str:
-    if isinstance(value, str):
-        value = _datetime.datetime.fromisoformat(value)
-    return format_date(value, locale=locale, **options)
+def _time_zone(options: ResolvedOptions, operand: Any) -> dt.tzinfo | None:
+    tz = options.get("timeZone")
+    if tz is None:
+        return None
+    if isinstance(tz, dt.tzinfo):
+        return tz
+    if tz == "input":
+        if getattr(operand, "tzinfo", None) is None:
+            msg = "Bad operand: timeZone=input requires an operand with a time zone or offset"
+            raise BadOperand(msg)
+        return operand.tzinfo
+    if tz == "UTC":
+        return dt.UTC
+    if _TIME_ZONE_OFFSET.match(str(tz)):
+        sign = -1 if tz[0] == "-" else 1
+        hours, minutes = int(tz[1:3]), int(tz[4:6])
+        return dt.timezone(sign * dt.timedelta(hours=hours, minutes=minutes))
+    try:
+        return zoneinfo.ZoneInfo(str(tz))
+    except (zoneinfo.ZoneInfoNotFoundError, ValueError) as e:
+        msg = f"Bad option: timeZone={tz!r} is not a known time zone"
+        raise BadOption(msg) from e
 
 
-def format_time(
-    time: _datetime.time,
-    *,
-    locale: Locale,
-    style: Literal["full", "long", "medium", "short"] = "short",
-    **kwargs,  # noqa: ARG001
-) -> str:
-    return _format_time(time, format=style, locale=locale)
+def _apply_time_zone(operand: dt.datetime, options: ResolvedOptions) -> dt.datetime:
+    tz = _time_zone(options, operand)
+    if tz is None:
+        return operand
+    if operand.tzinfo is None:
+        return operand.replace(tzinfo=tz)
+    return operand.astimezone(tz)
 
 
-def time_formatter(value: Any, locale: Locale, options: dict[str, Any]) -> str:
-    if isinstance(value, str):
-        value = _datetime.datetime.fromisoformat(value)
-    if isinstance(value, _datetime.datetime):
-        value = value.time()
-    return format_time(value, locale=locale, **options)
+def _date_pattern(locale: Locale, fields: str, length: str) -> str:
+    skeleton = _DATE_SKELETONS[(fields, length)]
+    if skeleton.startswith("std:"):
+        return locale.date_formats[skeleton[4:]].pattern
+    if skeleton == "EEEE":
+        return "EEEE"
+    if skeleton not in locale.datetime_skeletons:
+        skeleton = match_skeleton(skeleton, locale.datetime_skeletons, allow_different_fields=True)
+    return locale.datetime_skeletons[skeleton].pattern
+
+
+def _time_pattern(locale: Locale, precision: str, hour12: str | None, time_zone_style: str | None) -> str:
+    if hour12 is None:
+        # the locale's preferred hour cycle, taken from its standard short time format
+        hour = "h" if "h" in locale.time_formats["short"].pattern else "H"
+    else:
+        hour = "h" if hour12 == "true" else "H"
+    skeleton = hour + {"hour": "", "minute": "m", "second": "ms"}[precision]
+    if skeleton not in locale.datetime_skeletons:
+        skeleton = match_skeleton(skeleton, locale.datetime_skeletons, allow_different_fields=True)
+    pattern = locale.datetime_skeletons[skeleton].pattern
+    if time_zone_style == "short":
+        pattern += " z"
+    elif time_zone_style == "long":
+        pattern += " zzzz"
+    return pattern
+
+
+def datetime_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
+    operand, options = datetime_operand(value, options)
+    if not isinstance(operand, dt.datetime):
+        msg = f"Bad operand: :datetime requires a datetime, got {operand!r}"
+        raise BadOperand(msg)
+    fields = literal_option(options, "dateFields", DATE_FIELDS, "year-month-day") or "year-month-day"
+    length = literal_option(options, "dateLength", DATE_LENGTH, "medium") or "medium"
+    precision = literal_option(options, "timePrecision", TIME_PRECISION, "minute") or "minute"
+    time_zone_style = literal_option(options, "timeZoneStyle", TIME_ZONE_STYLE, None)
+    hour12 = choice_option(options, "hour12", HOUR12, None)
+    operand = _apply_time_zone(operand, options)
+    date_pattern = _date_pattern(locale, fields, length)
+    time_pattern = _time_pattern(locale, precision, hour12, time_zone_style)
+    # The locale's datetime format is a template like "{1}, {0}" ({1} = date, {0} = time)
+    datetime_format = str(locale.datetime_formats[length]).replace("'", "")
+    combined = datetime_format.replace("{1}", date_pattern).replace("{0}", time_pattern)
+    return _format_datetime(operand, format=combined, locale=locale)
+
+
+def date_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
+    operand, options = datetime_operand(value, options)
+    if not isinstance(operand, dt.date):  # datetime is a subclass of date
+        msg = f"Bad operand: :date requires a date or datetime, got {operand!r}"
+        raise BadOperand(msg)
+    fields = literal_option(options, "fields", DATE_FIELDS, "year-month-day") or "year-month-day"
+    length = literal_option(options, "length", DATE_LENGTH, "medium") or "medium"
+    if isinstance(operand, dt.datetime):
+        operand = _apply_time_zone(operand, options)
+    return _format_datetime(operand, format=_date_pattern(locale, fields, length), locale=locale)
+
+
+def time_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
+    operand, options = datetime_operand(value, options)
+    if not isinstance(operand, (dt.datetime, dt.time)):
+        msg = f"Bad operand: :time requires a time or datetime, got {operand!r}"
+        raise BadOperand(msg)
+    precision = literal_option(options, "precision", TIME_PRECISION, "minute") or "minute"
+    time_zone_style = literal_option(options, "timeZoneStyle", TIME_ZONE_STYLE, None)
+    hour12 = choice_option(options, "hour12", HOUR12, None)
+    pattern = _time_pattern(locale, precision, hour12, time_zone_style)
+    if isinstance(operand, dt.datetime):
+        return _format_datetime(_apply_time_zone(operand, options), format=pattern, locale=locale)
+    return _format_time(operand, format=pattern, tzinfo=_time_zone(options, operand), locale=locale)
 
 
 @dataclass(frozen=True)

@@ -1,3 +1,5 @@
+import datetime as dt
+
 import pytest
 
 from messageformat2 import Message
@@ -182,3 +184,93 @@ def test_string_errors():
         Message("{:string}").format()
     with pytest.raises(BadSelector):
         Message(".local $d = {|2024-05-01| :date} .match $d * {{The due date is {$d}}}").format()
+
+
+DT = dt.datetime(2006, 1, 2, 15, 4, 6)  # noqa: DTZ001
+AWARE = dt.datetime(2006, 1, 2, 15, 4, 6, tzinfo=dt.UTC)
+
+
+@pytest.mark.parametrize(
+    ("message", "inputs", "locale", "formatted"),
+    [
+        ("{$d :datetime}", {"d": DT}, "en", "Jan 2, 2006, 3:04 PM"),
+        ("{$d :datetime}", {"d": DT}, "cs", "2. 1. 2006 15:04"),
+        ("{$d :datetime dateLength=long timePrecision=second}", {"d": DT}, "en", "January 2, 2006, 3:04:06 PM"),
+        ("{$d :datetime dateLength=short timePrecision=hour}", {"d": DT}, "en", "1/2/06, 3 PM"),
+        (
+            "{$d :datetime dateFields=year-month-day-weekday dateLength=long}",
+            {"d": DT},
+            "en",
+            "Monday, January 2, 2006, 3:04 PM",
+        ),
+        ("{$d :datetime dateFields=month-day}", {"d": DT}, "en", "Jan 2, 3:04 PM"),
+        ("{$d :datetime hour12=false}", {"d": DT}, "en", "Jan 2, 2006, 15:04"),
+        ("{$d :datetime hour12=true}", {"d": DT}, "cs", "2. 1. 2006 3:04\u202fodp."),
+        ("{$d :datetime timeZoneStyle=short}", {"d": AWARE}, "en", "Jan 2, 2006, 3:04 PM UTC"),
+        (
+            "{$d :datetime timeZone=|Europe/Zurich| timeZoneStyle=long}",
+            {"d": AWARE},
+            "en",
+            "Jan 2, 2006, 4:04 PM Central European Standard Time",
+        ),
+        ("{$d :datetime timeZone=|+01:00| timeZoneStyle=short}", {"d": DT}, "en", "Jan 2, 2006, 3:04 PM +0100"),
+        ("{$d :datetime timeZone=input timeZoneStyle=short}", {"d": AWARE}, "en", "Jan 2, 2006, 3:04 PM UTC"),
+        ("{|2006-01-02T15:04:06| :datetime}", None, "en", "Jan 2, 2006, 3:04 PM"),
+        ("{|2006-01-02T15:04:06Z| :datetime timeZoneStyle=short}", None, "en", "Jan 2, 2006, 3:04 PM UTC"),
+        ("{$d :datetime}", {"d": "2006-01-02T15:04:06"}, "en", "Jan 2, 2006, 3:04 PM"),
+        ("{$d :date}", {"d": DT}, "en", "Jan 2, 2006"),
+        ("{$d :date}", {"d": DT.date()}, "en", "Jan 2, 2006"),
+        ("{$d :date length=long}", {"d": DT}, "fr", "2 janvier 2006"),
+        ("{$d :date length=short}", {"d": DT}, "en", "1/2/06"),
+        ("{$d :date fields=weekday length=long}", {"d": DT}, "en", "Monday"),
+        ("{$d :date fields=month-day-weekday}", {"d": DT}, "en", "Mon, Jan 2"),
+        ("{$d :date fields=year-month-day-weekday length=long}", {"d": DT}, "en", "Monday, January 2, 2006"),
+        ("{|2006-01-02| :date}", None, "en", "Jan 2, 2006"),
+        ("{$d :time}", {"d": DT}, "en", "3:04 PM"),
+        ("{$d :time}", {"d": DT.time()}, "en", "3:04 PM"),
+        ("{$d :time precision=second}", {"d": DT}, "cs", "15:04:06"),
+        ("{$d :time precision=hour}", {"d": DT}, "en", "3 PM"),
+        ("{$d :time hour12=false}", {"d": DT}, "en", "15:04"),
+        ("{$d :time timeZone=UTC timeZoneStyle=short}", {"d": DT}, "en", "3:04 PM UTC"),
+        # the resolved value of a date/time function can be used as an operand; only override options are inherited
+        (".local $x = {$d :datetime dateLength=long timeZone=UTC} {{{$x :date}}}", {"d": DT}, "en", "Jan 2, 2006"),
+        (
+            ".local $x = {$d :datetime dateLength=long timeZone=UTC} {{{$x :time timeZoneStyle=short}}}",
+            {"d": DT},
+            "en",
+            "3:04 PM UTC",
+        ),
+        (".local $x = {$d :datetime dateLength=long} {{{$x :datetime}}}", {"d": DT}, "en", "Jan 2, 2006, 3:04 PM"),
+        (".local $x = {$d :date length=long} {{{$x}}}", {"d": DT}, "en", "January 2, 2006"),
+    ],
+)
+def test_datetime_formatting(message, inputs, locale, formatted):
+    assert Message(message).format(inputs, locale) == formatted
+
+
+@pytest.mark.parametrize(
+    ("message", "inputs", "error"),
+    [
+        ("{:datetime}", None, BadOperand),
+        ("{:date}", None, BadOperand),
+        ("{:time}", None, BadOperand),
+        ("{horse :datetime}", None, BadOperand),
+        ("{$d :datetime}", {"d": True}, BadOperand),
+        ("{$d :datetime}", {"d": 1136214246}, BadOperand),
+        ("{$d :datetime}", {"d": DT.date()}, BadOperand),
+        ("{$d :datetime}", {"d": DT.time()}, BadOperand),
+        ("{$d :date}", {"d": DT.time()}, BadOperand),
+        ("{$d :time}", {"d": DT.date()}, BadOperand),
+        (".local $n = {42 :number} {{{$n :datetime}}}", None, BadOperand),
+        ("{$d :datetime timeZone=input}", {"d": DT}, BadOperand),
+        ("{$d :datetime dateLength=huge}", {"d": DT}, BadOption),
+        ("{$d :datetime dateLength=$l}", {"d": DT, "l": "long"}, BadOption),
+        ("{$d :date fields=$f}", {"d": DT, "f": "weekday"}, BadOption),
+        ("{$d :time precision=$p}", {"d": DT, "p": "second"}, BadOption),
+        ("{$d :datetime hour12=maybe}", {"d": DT}, BadOption),
+        ("{$d :datetime timeZone=|Mars/Olympus|}", {"d": DT}, BadOption),
+    ],
+)
+def test_datetime_errors(message, inputs, error):
+    with pytest.raises(error):
+        Message(message).format(inputs, "en")

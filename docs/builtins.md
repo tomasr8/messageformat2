@@ -89,87 +89,54 @@ Exactly one of the options must be given:
 The formatting options of an annotated operand (e.g. `signDisplay` of `{$likes :integer signDisplay=always}`)
 are inherited. `:offset` can also be used as a selector, in which case it behaves like `:number`.
 
-### `:datetime`
+### `:datetime`, `:date`, `:time`
 
-The value must either a `datetime` instance or an ISO8601 string that can be parsed using `datetime.fromisoformat`.
+The operand must be a `datetime` (or a `date`/`time` for `:date`/`:time` respectively) or an ISO 8601 date or
+datetime string that can be parsed with `datetime.fromisoformat`, e.g. `|2006-01-02|` or `|2006-01-02T15:04:06+01:00|`.
+The resolved value of another date/time function is also accepted, in which case its override options
+(`timeZone`, `hour12`) are inherited.
 
-#### Formatter
+The option values below must be set by literals (an option set by a variable is a `BadOption` error).
 
-- `Datestyle`
-    - full
+#### `:datetime`
+
+- `dateFields`
+    - weekday
+    - day-weekday
+    - month-day
+    - month-day-weekday
+    - year-month-day (default)
+    - year-month-day-weekday
+- `dateLength`
     - long
-    - medium
-    - short (default)
-- `timeStyle` (not implemented)
-- `weekday`:
+    - medium (default)
+    - short
+- `timePrecision`
+    - hour
+    - minute (default)
+    - second
+- `timeZoneStyle`: no time zone is shown unless set
     - long
     - short
-    - narrow
-- `era`:
-    - long
-    - short
-    - narrow
-- `year`:
-    - numeric
-    - 2-digit
-- `month`:
-    - numeric
-    - 2-digit
-- `day`:
-    - numeric
-    - 2-digit
-- `hour`:
-    - numeric
-    - 2-digit
-- `minute`:
-    - numeric
-    - 2-digit
-- `second`:
-    - numeric
-    - 2-digit
-- `fractionalSecondDigits`:
-    - 1
-    - 2
-    - 3
-- `hourCycle`:
-    - h11
-    - h12
-    - h23
-    - h24
-- `timeZoneName` (not implemented)
+
+#### `:date`
+
+- `fields`: same values as `dateFields` above
+- `length`: same values as `dateLength` above
+
+#### `:time`
+
+- `precision`: same values as `timePrecision` above
+- `timeZoneStyle`: same values as above
+
+#### Override options
+
+- `timeZone`: `UTC`, `input` (the time zone of the operand, which must then have one), an IANA time zone
+  name (`|Europe/Zurich|`) or an offset (`|+01:00|`). A naive `datetime` is interpreted in this time zone,
+  an aware one is converted to it.
+- `hour12`: `true` or `false` (`:datetime` and `:time` only); the default is locale-dependent.
+- `calendar`: not implemented (ignored).
 
 #### Selector
 
-The `:date` selector is not supported currently as it is not required by MF2
-
-### `:date`
-
-The value must either a `datetime` instance or an ISO8601 string that can be parsed using `datetime.fromisoformat`.
-
-#### Formatter
-
-- `style`
-    - full
-    - long
-    - medium
-    - short (default)
-
-#### Selector
-
-The `:date` selector is not supported currently as it is not required by MF2
-
-### `:time`
-
-The value must either a `datetime.time` instance
-
-#### Formatter
-
-- `style`
-    - full
-    - long
-    - medium
-    - short (default)
-
-#### Selector
-
-The `:time` selector is not supported currently as it is not required by MF2
+The date/time functions do not support selection, as it is not required by MF2.
