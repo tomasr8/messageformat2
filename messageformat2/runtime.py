@@ -126,51 +126,48 @@ def format_select_message(message: SelectMessage, ctx: FormattingContext) -> str
     for decl in message.declarations:
         ctx.declarations[decl.name] = decl
 
-    pref = []
+    # Resolve Selectors: for each selector, the keys it matches, best match first
+    matches: list[list[str]] = []
     for i, selector in enumerate(message.selectors):
         keys = [key.value for v in message.variants if isinstance(key := v.keys[i], Literal)]
-        pref.append(select_keys(selector, keys, ctx))
+        matches.append(select_keys(selector, keys, ctx))
 
-    variants = filter_variants(pref, message.variants)
-    pattern = sort_variants(pref, variants)
-    return format_pattern(pattern, ctx)
-
-
-def filter_variants(pref: list, variants: list[Variant]) -> list[Variant]:
-    filtered = []
-    for v in variants:
-        include = True
-        for i, matches in enumerate(pref):
-            key = v.keys[i]
-            if isinstance(key, CatchallKey):
-                continue
-            assert isinstance(key, Literal)
-            ks = key.value
-            if ks not in matches:
-                include = False
-        if include:
-            filtered.append(v)
-    return filtered
+    # Compare Variants: keep the best of the matching variants, in source order
+    best: Variant | None = None
+    for variant in message.variants:
+        if not selectors_match(matches, variant.keys):
+            continue
+        if best is None or selectors_compare(matches, variant.keys, best.keys):
+            best = variant
+    assert best is not None  # guaranteed by the Missing Fallback Variant check
+    return format_pattern(best.value, ctx)
 
 
-def sort_variants(pref: list, variants: list[Variant]) -> Pattern:
-    sortable = [[-1, v] for v in variants]
+def selectors_match(matches: list[list[str]], keys: list[Literal | CatchallKey]) -> bool:
+    """Whether every key of a variant is the catch-all or matched by its selector."""
+    return all(
+        isinstance(key, CatchallKey) or key.value in selector for selector, key in zip(matches, keys, strict=True)
+    )
 
-    i = len(pref) - 1
-    while i >= 0:
-        matches = pref[i]
-        minpref = len(matches)
-        for s in sortable:
-            matchpref = minpref
-            key = s[1].keys[i]  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
-            if not isinstance(key, CatchallKey):
-                assert isinstance(key, Literal)
-                ks = key.value
-                matchpref = matches.index(ks)
-            s[0] = matchpref
-        sortable.sort(key=lambda x: x[0])
-        i = i - 1
-    return sortable[0][1].value  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+
+def selectors_compare(
+    matches: list[list[str]], keys1: list[Literal | CatchallKey], keys2: list[Literal | CatchallKey]
+) -> bool:
+    """Whether the (matching) keys `keys1` are a better match than `keys2`.
+
+    Keys are compared selector by selector: a literal key beats the catch-all, and a key earlier in the
+    selector's list of matches beats a later one. The first difference decides.
+    """
+    for selector, key1, key2 in zip(matches, keys1, keys2, strict=True):
+        if isinstance(key1, CatchallKey) and isinstance(key2, CatchallKey):
+            continue
+        if isinstance(key1, CatchallKey):
+            return False
+        if isinstance(key2, CatchallKey):
+            return True
+        if (rank := selector.index(key1.value)) != (other := selector.index(key2.value)):
+            return rank < other
+    return False
 
 
 def select_keys(selector: VariableRef, keys: list[str], ctx: FormattingContext) -> list[str]:
