@@ -56,7 +56,7 @@ ERRORS = {
 }
 
 # Optional features (test "tags") which are not implemented
-UNSUPPORTED_TAGS = {":currency", ":percent", "u:dir", "u:id"}
+UNSUPPORTED_TAGS = {"u:dir", "u:id"}
 
 # Bidi isolation of placeholders is not implemented: tests expecting it are compared without the isolates
 BIDI_ISOLATES = re.compile("[" + chr(0x2066) + "-" + chr(0x2069) + "]")

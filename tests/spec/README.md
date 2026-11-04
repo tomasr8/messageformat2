@@ -15,4 +15,4 @@ cp /tmp/mfwg/test/tests/functions/*.json tests/spec/functions/
 and update the commit hash above.
 
 Tests tagged with optional features which are not implemented
-(`:currency`, `:percent`, `u:dir`, `u:id`) are skipped, see `tests/test_spec.py`.
+(`u:dir`, `u:id`) are skipped, see `tests/test_spec.py`.

@@ -3,6 +3,7 @@ import datetime as dt
 import pytest
 
 from messageformat2 import Message
+from messageformat2.builtins import Currency
 from messageformat2.errors import BadOperand, BadOption, BadSelector, BadVariantKey
 
 
@@ -322,5 +323,132 @@ def test_datetime_formatting(message, inputs, locale, formatted):
     ],
 )
 def test_datetime_errors(message, inputs, error):
+    with pytest.raises(error):
+        Message(message).format(inputs, "en")
+
+
+@pytest.mark.parametrize(
+    ("message", "inputs", "locale", "formatted"),
+    [
+        ("{0.12345678 :percent}", None, "en", "12%"),
+        ("{0.12345678 :percent maximumFractionDigits=1}", None, "en", "12.3%"),
+        ("{0.12 :percent minimumFractionDigits=1}", None, "en", "12.0%"),
+        ("{0.12 :percent minimumSignificantDigits=1}", None, "en", "12%"),
+        ("{0.125 :percent maximumFractionDigits=0}", None, "en", "13%"),
+        ("{1 :percent}", None, "de", "100\u00a0%"),
+        ("{-0.5 :percent}", None, "en", "-50%"),
+        ("{0.5 :percent signDisplay=always}", None, "en", "+50%"),
+        ("{12.345 :percent}", None, "en", "1,235%"),
+        ("{12.345 :percent useGrouping=never}", None, "en", "1235%"),
+        ("{$x :percent}", {"x": 0.99}, "en", "99%"),
+        # the resolved value of :percent is not multiplied by 100
+        (".local $n = {0.42 :number} {{{$n :percent}}}", None, "en", "42%"),
+        (".local $n = {42 :integer} {{{$n :percent}}}", None, "en", "4,200%"),
+        (".local $n = {0.01 :percent} {{{$n :percent}}}", None, "en", "1%"),
+        (".local $n = {0.01 :percent} {{{$n :number}}}", None, "en", "0.01"),
+        (".local $n = {0.4 :percent minimumFractionDigits=1} {{{$n :percent}}}", None, "en", "40.0%"),
+        # roundingIncrement is not a :percent option and is ignored
+        ("{0.1234 :percent roundingIncrement=5}", None, "en", "12%"),
+    ],
+)
+def test_percent_formatting(message, inputs, locale, formatted):
+    assert Message(message).format(inputs, locale) == formatted
+
+
+def test_percent_selection():
+    message = ".input {$n :percent} .match $n 1 {{=1}} one {{one}} * {{other}}"
+    assert Message(message).format({"n": 0.01}, "en") == "=1"
+    assert Message(message).format({"n": "0.01"}, "en") == "=1"
+    assert Message(message).format({"n": 0.02}, "en") == "other"
+    assert Message(message).format({"n": 1}, "en") == "other"
+    # :percent always uses plural selection; select= on the operand is discarded
+    message = ".local $x = {0.01 :number select=ordinal} .local $n = {$x :percent} .match $n one {{one}} * {{other}}"
+    assert Message(message).format(None, "en") == "one"
+
+
+@pytest.mark.parametrize(
+    ("message", "inputs", "error"),
+    [
+        ("{:percent}", None, BadOperand),
+        ("{foo :percent}", None, BadOperand),
+        ("{1 :percent maximumFractionDigits=foo}", None, BadOption),
+        ("{1 :percent roundingMode=foo}", None, BadOption),
+    ],
+)
+def test_percent_errors(message, inputs, error):
+    with pytest.raises(error):
+        Message(message).format(inputs, "en")
+
+
+@pytest.mark.parametrize(
+    ("message", "inputs", "locale", "formatted"),
+    [
+        ("{42 :currency currency=EUR}", None, "en", "€42.00"),
+        ("{42 :currency currency=EUR}", None, "de", "42,00\u00a0€"),
+        ("{42 :currency currency=eur}", None, "ja", "€42.00"),
+        ("{42 :currency currency=JPY}", None, "en", "¥42"),
+        ("{42.567 :currency currency=JPY}", None, "en", "¥43"),
+        ("{-42.5 :currency currency=USD}", None, "en", "-$42.50"),
+        ("{-42.5 :currency currency=USD currencySign=accounting}", None, "en", "($42.50)"),
+        ("{42 :currency currency=EUR fractionDigits=auto}", None, "en", "€42.00"),
+        ("{42 :currency currency=EUR fractionDigits=0}", None, "en", "€42"),
+        ("{42.123 :currency currency=EUR fractionDigits=3}", None, "en", "€42.123"),
+        ("{1234.5 :currency currency=EUR fractionDigits=0 roundingMode=floor}", None, "en", "€1,234"),
+        ("{1234.5 :currency currency=EUR useGrouping=never}", None, "en", "€1234.50"),
+        ("{42 :currency currency=USD currencyDisplay=symbol}", None, "en", "$42.00"),
+        ("{42 :currency currency=USD currencyDisplay=narrowSymbol}", None, "en", "$42.00"),
+        ("{42 :currency currency=USD currencyDisplay=code}", None, "en", "USD42.00"),
+        ("{42 :currency currency=USD currencyDisplay=name}", None, "en", "42.00 US dollars"),
+        ("{42 :currency currency=USD currencyDisplay=never}", None, "en", "42.00"),
+        ("{42 :currency currency=USD currencyDisplay=never}", None, "de", "42,00"),
+        ("{5 :currency currency=USD trailingZeroDisplay=stripIfInteger}", None, "en", "$5"),
+        ("{5.01 :currency currency=USD trailingZeroDisplay=stripIfInteger}", None, "en", "$5.01"),
+        ("{42 :currency currency=USD minimumIntegerDigits=4}", None, "en", "$0,042.00"),
+        # currency values as operands
+        ("{$p :currency}", {"p": Currency(42, "EUR")}, "en", "€42.00"),
+        ("{$p :currency}", {"p": Currency("42.5", "gbp")}, "en", "£42.50"),
+        ("{$p :currency}", {"p": {"value": 42.5, "currency": "GBP"}}, "en", "£42.50"),
+        ("{$p :currency currencyDisplay=code}", {"p": Currency(42, "EUR")}, "en", "EUR42.00"),
+        # the options of annotated operands are inherited
+        (".local $n = {42 :number} {{{$n :currency currency=EUR}}}", None, "en", "€42.00"),
+        (".local $n = {42.7 :integer} {{{$n :currency currency=EUR}}}", None, "en", "€43.00"),
+        (".local $n = {42 :currency currency=EUR} {{{$n :currency}}}", None, "en", "€42.00"),
+        (".local $n = {42 :currency currency=EUR} {{{$n :currency currencyDisplay=code}}}", None, "en", "EUR42.00"),
+        (
+            (
+                ".input {$n :currency currency=USD trailingZeroDisplay=stripIfInteger} "
+                "{{{$n :currency currencySign=accounting}}}"
+            ),
+            {"n": -5},
+            "en",
+            "($5)",
+        ),
+    ],
+)
+def test_currency_formatting(message, inputs, locale, formatted):
+    assert Message(message).format(inputs, locale) == formatted
+
+
+@pytest.mark.parametrize(
+    ("message", "inputs", "error"),
+    [
+        ("{:currency}", None, BadOperand),
+        ("{foo :currency}", None, BadOperand),
+        ("{42 :currency}", None, BadOperand),
+        (".local $n = {42 :number} {{{$n :currency}}}", None, BadOperand),
+        ("{$p :currency}", {"p": Currency(42, "EURO")}, BadOperand),
+        ("{$p :currency}", {"p": Currency("foo", "EUR")}, BadOperand),
+        ("{42 :currency currency=EURO}", None, BadOption),
+        ("{42 :currency currency=12}", None, BadOption),
+        ("{$p :currency currency=USD}", {"p": Currency(42, "EUR")}, BadOption),
+        (".local $n = {42 :currency currency=EUR} {{{$n :currency currency=USD}}}", None, BadOption),
+        ("{42 :currency currency=EUR currencyDisplay=foo}", None, BadOption),
+        ("{42 :currency currency=EUR fractionDigits=foo}", None, BadOption),
+        # a currency value is not a numeric operand, and :currency is not a selector
+        (".local $n = {42 :currency currency=EUR} {{{$n :number}}}", None, BadOperand),
+        (".local $n = {42 :currency currency=EUR} .match $n * {{other}}", None, BadSelector),
+    ],
+)
+def test_currency_errors(message, inputs, error):
     with pytest.raises(error):
         Message(message).format(inputs, "en")

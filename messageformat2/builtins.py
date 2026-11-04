@@ -3,6 +3,7 @@ import datetime as dt
 import re
 import unicodedata
 import zoneinfo
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import (
     ROUND_CEILING,
@@ -22,7 +23,13 @@ from babel import Locale
 from babel.dates import format_datetime as _format_datetime
 from babel.dates import format_time as _format_time
 from babel.dates import match_skeleton
-from babel.numbers import get_minus_sign_symbol, get_plus_sign_symbol
+from babel.numbers import (
+    format_currency,
+    get_currency_precision,
+    get_minus_sign_symbol,
+    get_plus_sign_symbol,
+    parse_pattern,
+)
 
 from messageformat2.errors import (
     BadOperand,
@@ -122,9 +129,10 @@ class Selector(Protocol):
 NUMBER_LITERAL = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?$")
 """The `number-literal` production: the only strings accepted as numeric operands."""
 DIGIT_SIZE_OPTION = re.compile(r"^(?:0|[1-9][0-9]?)$")
+CURRENCY_CODE = re.compile(r"^[a-zA-Z]{3}$")
 PLURAL_KEYWORDS = frozenset({"zero", "one", "two", "few", "many", "other"})
 # Functions whose resolved value can be used as the operand of a numeric function
-NUMERIC_FUNCTIONS = frozenset({"number", "integer", "offset"})
+NUMERIC_FUNCTIONS = frozenset({"number", "integer", "offset", "percent"})
 SIGN_DISPLAY = frozenset({"auto", "always", "exceptZero", "negative", "never"})
 USE_GROUPING = frozenset({"auto", "always", "never", "min2"})
 SELECT = frozenset({"plural", "ordinal", "exact"})
@@ -142,9 +150,12 @@ ROUNDING_MODES: dict[str, str | None] = {
     "halfTrunc": ROUND_HALF_DOWN,
     "halfEven": ROUND_HALF_EVEN,
 }
+CURRENCY_SIGN = frozenset({"accounting", "standard"})
+CURRENCY_DISPLAY = frozenset({"narrowSymbol", "symbol", "name", "code", "never"})
 # Options of an operand which are discarded when it is used as the operand of these functions
 DISCARDED_OPERAND_OPTIONS = {
     "integer": ("minimumFractionDigits", "maximumFractionDigits", "minimumSignificantDigits"),
+    "percent": ("minimumIntegerDigits", "roundingIncrement", "select"),
 }
 # Options which affect the serialization of integers for exact matching
 EXACT_MATCH_OPTIONS = (
@@ -185,6 +196,17 @@ def string_selector(value: Any, locale: Locale, options: dict[str, Any], keys: l
     # The string value is compared to the keys in NFC (the keys are already normalized)
     string = unicodedata.normalize("NFC", string_formatter(value, locale=locale, options=options))
     return [string] if string in keys else []
+
+
+@dataclass(frozen=True)
+class Currency:
+    """A currency value: the operand of `:currency` when the currency is not given as an option.
+
+    Any mapping with the keys `value` and `currency` is accepted as well.
+    """
+
+    value: int | float | Decimal | str
+    currency: str
 
 
 def to_decimal(value: Any) -> Decimal:
@@ -242,7 +264,10 @@ def numeric_operand(value: Any, options: ResolvedOptions, fn_name: str) -> tuple
 
 
 def numeric_value(lazy: LazyValue) -> tuple[Decimal, ResolvedOptions]:
-    """Return the numeric value and the resolved options of a value annotated with a numeric function."""
+    """Return the numeric value and the resolved options of a value annotated with a numeric function.
+
+    The numeric value of a `:percent` is that of its operand (it is not multiplied by 100).
+    """
     number, options = numeric_operand(lazy.value, lazy.options, lazy.fn_name)
     if lazy.fn_name == "integer":
         number = round_to_integer(number)
@@ -260,6 +285,40 @@ def offset_delta(options: dict[str, Any]) -> Decimal:
         return Decimal(add)
     msg = "Bad option: :offset requires exactly one of the options 'add' and 'subtract'"
     raise BadOption(msg)
+
+
+def currency_operand(value: Any, options: ResolvedOptions) -> tuple[Decimal, str, ResolvedOptions]:
+    """Resolve the operand of `:currency`: the amount, the currency code and the resolved options.
+
+    The operand is a `Currency` (or a mapping with `value` and `currency`), the resolved value of another
+    `:currency` expression, or a numeric operand together with the `currency` option.
+    """
+    if isinstance(value, LazyValue) and value.fn_name == "currency":
+        number, currency, inherited = currency_operand(value.value, value.options)
+        if "currency" in options:
+            msg = "Bad option: the currency of a currency value cannot be overridden with the 'currency' option"
+            raise BadOption(msg)
+        return number, currency, ResolvedOptions({**inherited, **options}, literal=options.literal)
+    if isinstance(value, Currency) or (isinstance(value, Mapping) and {"value", "currency"} <= set(value)):
+        if "currency" in options:
+            msg = "Bad option: the currency of a currency value cannot be overridden with the 'currency' option"
+            raise BadOption(msg)
+        amount, currency = (
+            (value.value, value.currency) if isinstance(value, Currency) else (value["value"], value["currency"])
+        )
+        if not isinstance(currency, str) or not CURRENCY_CODE.match(currency):
+            msg = f"Bad operand: {currency!r} is not a well-formed currency code"
+            raise BadOperand(msg)
+        return to_decimal(amount), currency.upper(), options
+    number, options = numeric_operand(value, options, "currency")
+    if "currency" not in options:
+        msg = "Bad operand: a numeric operand of :currency requires the 'currency' option"
+        raise BadOperand(msg)
+    currency = options["currency"]
+    if not isinstance(currency, str) or not CURRENCY_CODE.match(currency):
+        msg = f"Bad option: currency={currency!r} is not a well-formed currency code"
+        raise BadOption(msg)
+    return number, currency.upper(), options
 
 
 def _integer_digits(number: Decimal) -> int:
@@ -537,6 +596,61 @@ def offset_selector(value: Any, locale: Locale, options: ResolvedOptions, keys: 
     return select_numeric(number, locale, ResolvedOptions(inherited, literal=options.literal), keys)
 
 
+def percent_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
+    number, options = numeric_operand(value, options, "percent")
+    return format_numeric(number * 100, locale, options, percent=True)
+
+
+def percent_selector(value: Any, locale: Locale, options: ResolvedOptions, keys: list[str]) -> list[str]:
+    # :percent always selects with the plural rules, on the value multiplied by 100
+    number, options = numeric_operand(value, options, "percent")
+    return select_numeric(_strip_trailing_zeros(number * 100), locale, options, keys, select="plural")
+
+
+def _strip_trailing_zeros(number: Decimal) -> Decimal:
+    """`1.00` -> `1`, `12.50` -> `12.5` (the visible fraction digits matter for plural selection)."""
+    if number == number.to_integral_value():
+        return number.quantize(Decimal(1))
+    return number.normalize()
+
+
+def currency_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
+    number, currency, options = currency_operand(value, options)
+    currency_sign = choice_option(options, "currencySign", CURRENCY_SIGN, "standard") or "standard"
+    currency_display = choice_option(options, "currencyDisplay", CURRENCY_DISPLAY, "symbol") or "symbol"
+    use_grouping = choice_option(options, "useGrouping", USE_GROUPING, "auto") or "auto"
+    precision = get_currency_precision(currency)
+    digits = resolve_digits(options, min_frac=precision, max_frac=precision, fixed_fraction=True)
+    number, frac_prec = round_number(number, digits)
+    grouping = _grouping(use_grouping, number)
+
+    if currency_display == "name":
+        # "5.00 US dollars": Babel formats the amount with a decimal pattern and appends the plural currency name
+        pattern = copy.copy(locale.decimal_formats[None])
+        pattern.frac_prec, pattern.int_prec = frac_prec, (digits.min_int, pattern.int_prec[1])
+        return format_currency(
+            number,
+            currency,
+            format=pattern,
+            locale=locale,
+            format_type="name",
+            currency_digits=False,
+            group_separator=grouping,
+        )
+    template = locale.currency_formats[currency_sign].pattern
+    if currency_display == "code":
+        template = template.replace("¤", "¤¤")
+    elif currency_display == "never":
+        # drop the currency sign and the (no-break) space next to it
+        strip = " \u00a0\u202f"
+        template = ";".join(part.replace("¤", "").strip(strip) for part in template.split(";"))
+    pattern = parse_pattern(template)
+    pattern.frac_prec, pattern.int_prec = frac_prec, (digits.min_int, pattern.int_prec[1])
+    return pattern.apply(
+        number, locale, currency=currency, currency_digits=False, group_separator=grouping, numbering_system="default"
+    )
+
+
 DATETIME_FUNCTIONS = frozenset({"datetime", "date", "time"})
 # Options which are inherited from an annotated date/time operand
 DATETIME_OVERRIDE_OPTIONS = ("timeZone", "hour12", "calendar")
@@ -739,6 +853,8 @@ default_registry = Registry(
         "number": number_formatter,
         "integer": integer_formatter,
         "offset": offset_formatter,
+        "percent": percent_formatter,
+        "currency": currency_formatter,
         "datetime": datetime_formatter,
         "date": date_formatter,
         "time": time_formatter,
@@ -748,6 +864,7 @@ default_registry = Registry(
         "number": number_selector,
         "integer": integer_selector,
         "offset": offset_selector,
+        "percent": percent_selector,
     },
 )
 """The default registry of formatters and selectors."""

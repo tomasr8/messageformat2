@@ -30,7 +30,7 @@ cat {{I have a cat}}
 
 The operand must be an `int`, `float` or `Decimal` (but not a `bool`), or a string matching the
 `number-literal` production of the spec (e.g. `|-1234.5|`, `|1e3|`; `|01|` or `|.5|` are not numbers).
-The resolved value of another numeric function (`:number`, `:integer`, `:offset`) is also accepted,
+The resolved value of another numeric function (`:number`, `:integer`, `:offset`, `:percent`) is also accepted,
 in which case its options are inherited, with the options of the expression taking priority.
 
 #### Formatter
@@ -109,6 +109,37 @@ Exactly one of the options must be given:
 
 The formatting options of an annotated operand (e.g. `signDisplay` of `{$likes :integer signDisplay=always}`)
 are inherited. `:offset` can also be used as a selector, in which case it behaves like `:number`.
+
+### `:percent`
+
+Formats a numeric operand multiplied by 100 as a percentage, e.g. `{0.25 :percent}` → `25%`.
+It takes the same options as `:number` except `select`, `minimumIntegerDigits` and `roundingIncrement`
+(by default no fraction digits are shown). As a selector it always uses the plural rules, on the value
+multiplied by 100. The resolved value of a `:percent` expression keeps the original (unmultiplied) value,
+so `.local $p = {0.25 :percent} {{{$p :number}}}` gives `0.25`.
+
+### `:currency`
+
+Formats a currency amount, e.g. `{42 :currency currency=EUR}` → `€42.00`. The operand is either a numeric
+operand together with the `currency` option, or a currency value: a `messageformat2.builtins.Currency(value, currency)`
+(or any mapping with the keys `value` and `currency`) passed as an input. The currency of a currency value cannot
+be overridden by the `currency` option (`BadOption`). `:currency` does not support selection.
+
+- `currency`: a three-letter currency code (case-insensitive); required for numeric operands
+- `currencySign`
+    - standard (default)
+    - accounting (e.g. `($42.50)`)
+- `currencyDisplay`
+    - symbol (default)
+    - narrowSymbol (treated as symbol)
+    - code (`USD42.00`)
+    - name (`42.00 US dollars`)
+    - never (`42.00`)
+- `useGrouping`, `minimumIntegerDigits`, `minimumSignificantDigits`, `maximumSignificantDigits`, `roundingMode`,
+  `roundingPriority`, `roundingIncrement`, `trailingZeroDisplay`: as for `:number`
+- `fractionDigits`
+    - auto (default): the number of fraction digits of the currency (2 for USD, 0 for JPY, ...)
+    - a *digit size option*: a fixed number of fraction digits
 
 ### `:datetime`, `:date`, `:time`
 
