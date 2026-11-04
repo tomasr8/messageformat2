@@ -320,3 +320,14 @@ def test_reannotation_with_different_function_passes_lazy_value():
 
     message = ".local $name = {alice :string} {{{$name :shout}}}"
     assert Message(message).format(formatters={"shout": shout}) == "ALICE"
+
+
+def test_selector_errors_are_bad_selector_errors():
+    def bad(value, locale, options, keys) -> list[str]:  # noqa: ARG001
+        msg = "nope"
+        raise BadOption(msg)
+
+    message = ".local $x = {42 :bad} .match $x 1 {{one}} * {{other}}"
+    with pytest.raises(BadSelector) as excinfo:
+        Message(message).format(None, "en", formatters={"bad": date}, selectors={"bad": bad})
+    assert isinstance(excinfo.value.__cause__, BadOption)

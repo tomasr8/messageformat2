@@ -57,10 +57,9 @@ class LazyValue:
         if selector := ctx.registry.selectors.get(self.fn_name):
             try:
                 return selector(value=self.value, locale=ctx.locale, options=self.options, keys=keys)
-            except MessageFunctionError:
-                raise
             except Exception as e:
-                msg = f"Exception raised while evaluating selector :{self.fn_name}"
+                # Any error while selecting is a Bad Selector error; the original error is available as `__cause__`
+                msg = f"Bad selector: error while evaluating selector :{self.fn_name}: {e}"
                 raise BadSelector(msg) from e
         if self.fn_name in ctx.registry.formatters:
             msg = f"Bad selector: function :{self.fn_name} does not support selection"
