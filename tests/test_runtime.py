@@ -4,7 +4,13 @@ import pytest
 from babel import Locale
 
 from messageformat2 import Message
-from messageformat2.errors import OperandMismatch, UnknownFunction, UnsupportedExpression, UnsupportedStatement
+from messageformat2.errors import (
+    OperandMismatch,
+    ParseError,
+    UnknownFunction,
+    UnsupportedExpression,
+    UnsupportedStatement,
+)
 
 
 def date(value, locale, options) -> str:  # noqa: ARG001
@@ -201,21 +207,29 @@ def test_selectors(message, inputs, formatted):
 @pytest.mark.parametrize(
     ("message", "inputs", "formatted"),
     [
-        (" .input", None, " .input"),
-        (" .local $n = {42}", None, " .local $n = 42"),
-        (" .match {$count} This looks illegal bu isn't", {"count": 42}, " .match 42 This looks illegal bu isn't"),
+        (" leading and trailing whitespace is text ", None, " leading and trailing whitespace is text "),
+        ("\n  .local $n = {42}\n  {{n = {$n}}}\n", None, "n = 42"),
+        ("\n  {{ quoted pattern whitespace is text }}\n", None, " quoted pattern whitespace is text "),
+        ("{{.input}}", None, ".input"),
+        ("{{ .match {$count} This looks illegal but isn't}}", {"count": 42}, " .match 42 This looks illegal but isn't"),
     ],
 )
 def test_gotchas(message, inputs, formatted):
-    assert (
-        Message(message).format(
-            inputs,
-            "en",
-            formatters={"integer": integer_formatter},
-            selectors={"integer": integer_selector},
-        )
-        == formatted
-    )
+    assert Message(message).format(inputs, "en") == formatted
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        " .input",
+        " .local $n = {42}",
+        " .match {$count} This looks illegal and is",
+        "\u3000.match",
+    ],
+)
+def test_simple_message_cannot_start_with_period(message):
+    with pytest.raises(ParseError):
+        Message(message)
 
 
 @pytest.mark.parametrize(

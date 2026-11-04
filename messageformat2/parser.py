@@ -58,7 +58,7 @@ _content_char = (
 )
 content_char = re.compile(f"^{_content_char}")
 
-simple_start_char = re.compile(rf"^{_content_char}|{_whitespace}|[@|]")
+simple_start_char = re.compile(rf"^{_content_char}|[@|]")
 text_char = re.compile(rf"^{_content_char}|{_whitespace}|[.@|]")
 quoted_char = re.compile(rf"^{_content_char}|{_whitespace}|[.@{{}}]")
 _reserved_char = rf"{_content_char}|[.]"
@@ -71,6 +71,7 @@ local_start = re.compile(r"^\.local")
 match_start = re.compile(r"^\.match")
 quoted_pattern_start = re.compile(r"^\{\{")
 quoted_pattern_end = re.compile(r"^\}\}")
+complex_message_start = re.compile(r"^(?:\.|\{\{)")
 reserved_body_part_start = re.compile(rf"^{_reserved_char}|{_reserved_escape}|\|")
 
 
@@ -145,7 +146,15 @@ def parse(msg: str) -> Message:
 
 def parse_message(msg: str) -> Message:
     queue = Queue(msg)
-    message = parse_complex_message(queue) if queue.peek() == "." else parse_simple_message(queue)
+    # complex-message = o *(declaration o) complex-body o
+    # simple-message  = o [simple-start pattern]
+    # A complex message always starts (after optional whitespace) with a keyword or a quoted pattern.
+    if queue.matches_after_whitespace(complex_message_start):
+        parse_optional_whitespace(queue)
+        message = parse_complex_message(queue)
+        parse_optional_whitespace(queue)
+    else:
+        message = parse_simple_message(queue)
     if queue:
         msg = f"Expected end of message but instead got: {queue.peek()}"
         raise ParseError(msg)
@@ -153,22 +162,21 @@ def parse_message(msg: str) -> Message:
 
 
 def parse_simple_message(queue: Queue) -> PatternMessage:
+    # Leading whitespace is significant in a simple message and is part of its text.
+    leading = parse_optional_whitespace(queue)
     if not queue:
-        return PatternMessage(declarations=[], pattern=[])
-    simple_start = parse_simple_start(queue)
+        return PatternMessage(declarations=[], pattern=[leading] if leading else [])
+    if queue.peek() != "{" and not queue.matches(simple_start_char) and not queue.matches(text_escape):
+        msg = f"Invalid character at the start of a simple message: {queue.peek()}"
+        raise ParseError(msg)
     pattern = parse_pattern(queue)
 
-    if not pattern:
-        return PatternMessage(declarations=[], pattern=simple_start)
-
-    x = simple_start[-1]
-    y = pattern[0]
-    match (x, y):
-        case (str(), str()):
-            pattern = [*simple_start[:-1], x + y, *pattern[1:]]
-            return PatternMessage(declarations=[], pattern=pattern)
-        case _:
-            return PatternMessage(declarations=[], pattern=simple_start + pattern)
+    if leading:
+        if pattern and isinstance(pattern[0], str):
+            pattern[0] = leading + pattern[0]
+        else:
+            pattern.insert(0, leading)
+    return PatternMessage(declarations=[], pattern=pattern)
 
 
 def parse_complex_message(queue: Queue) -> Message:
@@ -263,19 +271,6 @@ def parse_key(queue: Queue) -> Literal | CatchallKey:
         queue.pop()
         return CatchallKey(value=None)
     return parse_literal(queue)
-
-
-def parse_simple_start(queue: Queue) -> Pattern:
-    if queue.peek() == "{":
-        return [parse_placeholder(queue)]
-    if queue.matches(simple_start_char):
-        return [queue.pop()]
-    if queue.matches(text_escape):
-        text = queue.pop_match(text_escape)
-        text = text.replace(r"\{", "{").replace(r"\}", "}").replace(r"\\", "\\")
-        return [text]
-    msg = f"Invalid character: {queue.peek()}"
-    raise ParseError(msg)
 
 
 def parse_pattern(queue: Queue) -> Pattern:

@@ -88,11 +88,6 @@ def test_simple_start_char():
         "\ud7ff",
         "\ue000",
         "\U0010ffff",
-        " ",
-        "\t",
-        "\r",
-        "\n",
-        "\u3000",
         "@",
         "|",
         "a",
@@ -101,6 +96,8 @@ def test_simple_start_char():
     ]
     for c in chars:
         assert simple_start_char.match(c) is not None
+    for c in [".", " ", "\t", "\r", "\n", "\u3000", "{", "}", "\\"]:
+        assert simple_start_char.match(c) is None
 
 
 def test_text_char():

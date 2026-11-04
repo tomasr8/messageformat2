@@ -46,26 +46,22 @@ Options are merged together with the later options overwritting any earlier opti
 ## Whitespace
 
 This library implements the [grammar](https://www.unicode.org/reports/tr35/tr35-72/tr35-messageFormat.html#complete-abnf) exactly as specified which includes whitespace.
-According to the grammar, complex messages (messages containing declarations and/or the match block) cannot have a leading whitespace. For example, this message:
+
+Whitespace around a complex message (a message containing declarations and/or a match block) is not significant,
+so complex messages can be freely indented, e.g. in multiline strings:
 
 ```python
+Message("""
     .match {$count :integer}
-* {{count is {$count}}}
+    * {{count is {$count}}}
+""")
 ```
 
-will be parsed as a simple message (message not containing any declarations/match blocks, only patterns `{...}`). The parsing will fail because a pattern cannot contain unescaped `{`.
-
-When defining complex messages using multiline strings, don't forget to use a leading `\` to remove the first newline character:
-
-```python
-Message("""\  # <- notice the backslash
-.match {$count: integer}
-* {{count is {$count}}}""")
-```
-
-Alternatively, you can use this style:
+Whitespace in a simple message (a message consisting of a single pattern) is always significant
+and is part of the message text. Note that the first non-whitespace character of a simple message
+cannot be a `.`, so a misspelled keyword (`.imput`) is a syntax error rather than silently becoming text.
+To get a pattern which starts with a `.`, use a quoted pattern:
 
 ```python
-Message(""".match {$count: integer}
-* {{count is {$count}}}""")
+Message("{{.input is not a keyword here}}")
 ```
