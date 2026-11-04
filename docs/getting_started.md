@@ -38,6 +38,9 @@ message.format({"today": today}, locale="en_US")
 # -> "Today's date is May 10, 2024"
 message.format({"today": today}, locale="en_GB")
 # -> "Today's date is 10 May 2024"
+
+Message("{$price :currency currency=EUR}").format({"price": 42}, locale="de")
+# -> "42,00\xa0€"
 ```
 
 ## Plural support
@@ -56,4 +59,27 @@ one {{You have {$count} notification.}}
 
 msg.format({"count": 42}, locale='en_US') # -> "You have 42 notifications."
 msg.format({"count": 1}, locale='en_US') # -> "You have 1 notification."
+```
+
+## Error handling
+
+By default the first error is raised. To get the spec's fallback behaviour instead (`{$name}` for a
+missing variable, etc.) and collect the errors, pass an `on_error` callback,
+see [Error handling](howto/errors.md):
+
+```python
+errors = []
+Message("Hello, {$name}!").format({}, on_error=errors.append)  # -> "Hello, {$name}!"
+errors  # -> [UnresolvedVariable('Unresolved variable: name')]
+```
+
+## Bidirectional text
+
+The spec's *Default Bidi Strategy* (wrapping placeholders in Unicode isolate controls so that mixed-direction
+text displays correctly) is available with `bidi_isolation=True`,
+see [Bidirectional text](explanation.md#bidirectional-text):
+
+```python
+Message("Hello, {$name}!").format({"name": "Alice"}, bidi_isolation=True)
+# -> "Hello, \u2068Alice\u2069!"
 ```

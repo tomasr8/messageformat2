@@ -2,11 +2,11 @@
 
 # MessageFormat2 [![Documentation Status](https://readthedocs.org/projects/messageformat2/badge/?version=latest)](https://messageformat2.readthedocs.io/en/latest/?badge=latest) [![CI](https://github.com/tomasr8/messageformat2/workflows/CI/badge.svg)](https://github.com/tomasr8/messageformat2/workflows/CI/badge.svg)
 
-This is a Python implementation of the [Unicode Message Format 2.0
-specification](https://www.unicode.org/reports/tr35/tr35-messageFormat.html).
+This is a Python implementation of the [Unicode MessageFormat
+specification](https://www.unicode.org/reports/tr35/tr35-messageFormat.html) (LDML 49).
 
-Message Format 2.0 (MF2) is a new iteration of Message Format which aims to be
-more expressive and flexible than both Message Format 1.0 and, in the context of
+Unicode MessageFormat (MessageFormat 2.0, MF2) is a new iteration of MessageFormat which aims to be
+more expressive and flexible than both MessageFormat 1.0 and, in the context of
 Python, gettext.
 
 If you would like to learn more about MF2 itself head over to the [Unicode technical
@@ -16,16 +16,17 @@ specification](https://www.unicode.org/reports/tr35/tr35-messageFormat.html).
 
 The library includes:
 
-- A message parser and a formatter
-- Several builtin formatters and selectors described by the
+- A message parser and a formatter, passing the official
+  [test suite](https://github.com/unicode-org/message-format-wg/tree/main/test)
+- All default functions described by the
   [spec](https://github.com/unicode-org/message-format-wg/blob/main/spec/functions/README.md)
+  (`:string`, `:number`, `:integer`, `:offset`, `:percent`, `:currency`, `:date`, `:time`, `:datetime`)
   and the possibility to write custom formatters/selectors
+- Formatting with fallback values and error reporting, optional bidi isolation of placeholders
 - Helper classes to inspect and transform the message [data
   model](https://github.com/unicode-org/message-format-wg/blob/main/spec/data-model/README.md)
 
-## Documentation
-
-Documentation is available here: [https://messageformat2.readthedocs.io/en/latest/](https://messageformat2.readthedocs.io/en/latest/)
+## [Documentation](https://messageformat2.readthedocs.io/en/latest/)
 
 ## Installation
 
@@ -69,6 +70,9 @@ message.format({"today": today}, locale="en_US")
 # -> "Today's date is May 10, 2024"
 message.format({"today": today}, locale="en_GB")
 # -> "Today's date is 10 May 2024"
+
+Message("{$price :currency currency=EUR}").format({"price": 42}, locale="de")
+# -> "42,00\xa0€"
 ```
 
 ### Plural support
@@ -87,6 +91,27 @@ one {{You have {$count} notification.}}
 
 msg.format({"count": 42}, locale='en_US') # -> "You have 42 notifications."
 msg.format({"count": 1}, locale='en_US') # -> "You have 1 notification."
+```
+
+### Error handling
+
+By default the first error is raised. To get the spec's fallback behaviour instead (`{$name}` for a
+missing variable, etc.) and collect the errors, pass an `on_error` callback:
+
+```python
+errors = []
+Message("Hello, {$name}!").format({}, on_error=errors.append)  # -> "Hello, {$name}!"
+errors  # -> [UnresolvedVariable('Unresolved variable: name')]
+```
+
+### Bidirectional text
+
+The spec's *Default Bidi Strategy* (wrapping placeholders in Unicode isolate controls so that mixed-direction
+text displays correctly) is available with `bidi_isolation=True`:
+
+```python
+Message("Hello, {$name}!").format({"name": "Alice"}, bidi_isolation=True)
+# -> "Hello, \u2068Alice\u2069!"
 ```
 
 Complete documentation is available [here](https://messageformat2.readthedocs.io/en/latest/).
