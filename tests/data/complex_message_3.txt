@@ -1,13 +1,19 @@
 SelectMessage(
-    declarations=[],
-    selectors=[
-        VariableExpression(
-            arg=VariableRef(name="a"), annotation=FunctionAnnotation(name="integer", options=[]), attributes=[]
+    declarations=[
+        InputDeclaration(
+            name="a",
+            value=VariableExpression(
+                arg=VariableRef(name="a"), annotation=FunctionAnnotation(name="integer", options=[]), attributes=[]
+            ),
         ),
-        VariableExpression(
-            arg=VariableRef(name="b"), annotation=FunctionAnnotation(name="integer", options=[]), attributes=[]
+        LocalDeclaration(
+            name="b",
+            value=VariableExpression(
+                arg=VariableRef(name="a"), annotation=FunctionAnnotation(name="integer", options=[]), attributes=[]
+            ),
         ),
     ],
+    selectors=[VariableRef(name="a"), VariableRef(name="b")],
     variants=[
         Variant(
             keys=[CatchallKey(value=None), CatchallKey(value=None)],

@@ -27,7 +27,8 @@ except ParseError as e:
 
 try:
     Message("""\
-.match {$count: integer}
+.input {$count :integer}
+.match $count
 one {{The count is {$count}}}
 """)
 except DataModelError as e:

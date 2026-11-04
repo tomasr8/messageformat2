@@ -24,7 +24,8 @@ def integer_selector(
 
 
 format_message("""\
-.match {$count :integer select=plural}
+.input {$count :integer select=plural}
+.match $count
 1   {{You have one notification.}}
 one {{You have {$count} notification.}}
 *   {{You have {$count} notifications.}}""",
@@ -44,7 +45,8 @@ A selector function must take exactly 3 arguments:
 For example, for this message:
 
 ```python
-.match {$count :integer select=plural}
+.input {$count :integer select=plural}
+.match $count
 1   {{You have one notification.}}
 one {{You have {$count} notification.}}
 *   {{You have ???}}

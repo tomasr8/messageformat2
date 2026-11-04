@@ -232,14 +232,15 @@ def parse_quoted_pattern(queue: Queue) -> Pattern:
 
 
 def parse_matcher(queue: Queue) -> _Matcher:
+    # matcher         = match-statement s variant *(o variant)
+    # match-statement = match 1*(s selector)
+    # selector        = variable (a `$name`)
     queue.pop_match(match_start)
-    parse_optional_whitespace(queue)
     selectors = [parse_selector(queue)]
-    while queue.peek_after_whitespace() == "{":
-        parse_optional_whitespace(queue)
+    while queue.peek_after_whitespace() == "$":
         selectors.append(parse_selector(queue))
 
-    parse_optional_whitespace(queue)
+    parse_whitespace(queue)
     variants = [parse_variant(queue)]
 
     while queue.peek_after_whitespace():
@@ -249,8 +250,9 @@ def parse_matcher(queue: Queue) -> _Matcher:
     return _Matcher(selectors=selectors, variants=variants)
 
 
-def parse_selector(queue: Queue) -> Expression:
-    return parse_expression(queue)
+def parse_selector(queue: Queue) -> VariableRef:
+    parse_whitespace(queue)
+    return parse_variable(queue)
 
 
 def parse_variant(queue: Queue) -> Variant:

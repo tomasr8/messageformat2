@@ -1,10 +1,13 @@
 SelectMessage(
-    declarations=[],
-    selectors=[
-        VariableExpression(
-            arg=VariableRef(name="count"), annotation=FunctionAnnotation(name="integer", options=[]), attributes=[]
+    declarations=[
+        InputDeclaration(
+            name="count",
+            value=VariableExpression(
+                arg=VariableRef(name="count"), annotation=FunctionAnnotation(name="integer", options=[]), attributes=[]
+            ),
         )
     ],
+    selectors=[VariableRef(name="count")],
     variants=[
         Variant(keys=[Literal(value="0")], value=["You have no notifications."]),
         Variant(

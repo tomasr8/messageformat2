@@ -26,7 +26,7 @@ class VariantKeyMismatch(DataModelError):
 
     Examples:
         >>> from messageformat2 import Message
-        >>> Message(".match {$count :integer} 0 1 {{You have no notifications.}}") # doctest: +ELLIPSIS
+        >>> Message(".input {$count :integer} .match $count 0 1 {{You have no notifications.}}") # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ...
         messageformat2.errors.VariantKeyMismatch: ...
@@ -38,7 +38,7 @@ class MissingFallbackVariant(DataModelError):
 
     Examples:
         >>> from messageformat2 import Message
-        >>> Message(".match {$count :integer} one {{You have one notification.}}") # doctest: +ELLIPSIS
+        >>> Message(".input {$count :integer} .match $count one {{You have one notification.}}") # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ...
         messageformat2.errors.MissingFallbackVariant: Missing fallback variant
@@ -46,11 +46,11 @@ class MissingFallbackVariant(DataModelError):
 
 
 class MissingSelectorAnnotation(DataModelError):
-    """Raised when a selector annotation is missing.
+    """Raised when a selector does not reference a declaration with a function.
 
     Examples:
         >>> from messageformat2 import Message
-        >>> Message(".match {$count} * {{You have {$count} notifications.}}") # doctest: +ELLIPSIS
+        >>> Message(".match $count * {{You have {$count} notifications.}}") # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ...
         messageformat2.errors.MissingSelectorAnnotation: ...

@@ -164,7 +164,8 @@ def test_markup(message, inputs, formatted):
     [
         (
             """\
-.match {$count :integer}
+.input {$count :integer}
+.match $count
 one {{You have {$count} notification.}}
 1 {{You have one notification.}}
 * {{You have {$count} notifications.}}""",
@@ -173,7 +174,8 @@ one {{You have {$count} notification.}}
         ),
         (
             """\
-.match {$count :integer}
+.local $count = {42 :integer}
+.match $count
 xxx {{You have {$count} notification.}}
 yyy {{You have one notification.}}
 *   {{You have {$count} notifications.}}""",
@@ -183,7 +185,8 @@ yyy {{You have one notification.}}
         (
             """\
 .input {$count :integer}
-.match {$count}
+.local $n = {$count}
+.match $n
 *   {{You have {$count} notifications.}}""",
             {"count": 42},
             "You have 42 notifications.",
@@ -200,6 +203,27 @@ def test_selectors(message, inputs, formatted):
         )
         == formatted
     )
+
+
+@pytest.mark.parametrize(
+    ("inputs", "formatted"),
+    [
+        ({"count": 1, "n": 1}, "both are one"),
+        ({"count": 1, "n": 2}, "count is one"),
+        ({"count": 2, "n": 1}, "n is one"),
+        ({"count": 2, "n": 2}, "neither is one"),
+    ],
+)
+def test_multiple_selectors(inputs, formatted):
+    message = """\
+.input {$count :integer}
+.input {$n :integer}
+.match $count $n
+1 1 {{both are one}}
+1 * {{count is one}}
+* 1 {{n is one}}
+* * {{neither is one}}"""
+    assert Message(message).format(inputs, "en") == formatted
 
 
 @pytest.mark.parametrize(

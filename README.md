@@ -77,7 +77,8 @@ MF2 supports pluralization using built-in or custom selectors.
 from messageformat2 import Message
 
 msg = Message ("""\
-.match {$count :number}
+.input {$count :number}
+.match $count
 one {{You have {$count} notification.}}
 *   {{You have {$count} notifications.}}
 """)

@@ -205,7 +205,7 @@ class Variant(Node):
 # Helper class, not part of the Data Model
 @dataclass
 class _Matcher:
-    selectors: list[Expression]
+    selectors: list[VariableRef]
     variants: list[Variant]
 
 
@@ -258,7 +258,7 @@ class PatternMessage(Node):
 @dataclass
 class SelectMessage(Node):
     declarations: list[Declaration]
-    selectors: list[Expression]
+    selectors: list[VariableRef]
     variants: list[Variant]
 
     @property
@@ -384,29 +384,29 @@ class DataModelValidator(DataModelVisitor):
         self._check_duplicate_declarations(declarations)
         self._check_implicit_redeclaration(declarations)
 
-    def _check_missing_selector_annotation(self, selectors: list[Expression], declarations: list[Declaration]) -> None:
+    def _check_missing_selector_annotation(self, selectors: list[VariableRef], declarations: list[Declaration]) -> None:
+        # Each selector must be a variable that directly or indirectly references a declaration with a function
         for selector in selectors:
-            if not self._is_annotated(selector, declarations):
-                msg = "Missing selector annotation"
+            if not self._is_annotated(selector.name, declarations):
+                msg = f"Missing selector annotation: ${selector.name}"
                 raise MissingSelectorAnnotation(msg)
 
-    def _is_annotated(self, selector: Expression, declarations: list[Declaration]) -> bool:
-        match selector:
-            case LiteralExpression(annotation=None):
-                return False
-            case VariableExpression(annotation=None, arg=VariableRef(name=name)):
-                for decl in declarations:
-                    if decl.name != name:
-                        continue
-                    match decl:
-                        case InputDeclaration(value=VariableExpression(annotation=annotation)):
-                            return annotation is not None
-                        case _:
-                            return self._is_annotated(decl.value, declarations)
-                return False
-        return True
+    def _is_annotated(self, name: str, declarations: list[Declaration]) -> bool:
+        for decl in declarations:
+            if decl.name != name:
+                continue
+            match decl.value:
+                case VariableExpression(annotation=None, arg=VariableRef(name=ref)):
+                    # `.local $x = {$y}`: follow the reference (`.input {$x}` is `VariableExpression(arg=$x)`,
+                    # but an input declaration cannot reference itself, so this only recurses for locals)
+                    return not isinstance(decl, InputDeclaration) and self._is_annotated(ref, declarations)
+                case LiteralExpression(annotation=None):
+                    return False
+                case _:
+                    return True
+        return False
 
-    def _check_variant_key_mismatch(self, selectors: list[Expression], variants: list[Variant]) -> None:
+    def _check_variant_key_mismatch(self, selectors: list[VariableRef], variants: list[Variant]) -> None:
         for variant in variants:
             if len(selectors) != len(variant.keys):
                 msg = f'Key count does not match selector count: "{variant}"'

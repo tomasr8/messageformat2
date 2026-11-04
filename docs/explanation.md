@@ -52,7 +52,8 @@ so complex messages can be freely indented, e.g. in multiline strings:
 
 ```python
 Message("""
-    .match {$count :integer}
+    .input {$count :integer}
+    .match $count
     * {{count is {$count}}}
 """)
 ```

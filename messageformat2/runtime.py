@@ -159,8 +159,12 @@ def sort_variants(pref: list, variants: list[Variant]) -> Pattern:
     return sortable[0][1].value  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
 
-def resolve_selector(selector: Expression, ctx: FormattingContext) -> Any | LazyValue:
-    return resolve_expression(selector, ctx)
+def resolve_selector(selector: VariableRef, ctx: FormattingContext) -> LazyValue:
+    resolved = resolve_variable(selector.name, ctx)
+    if not isinstance(resolved, LazyValue):
+        msg = f"Bad selector: ${selector.name} does not support selection"
+        raise SelectionError(msg)
+    return resolved
 
 
 def format_expression(expression: Expression, ctx: FormattingContext) -> str:

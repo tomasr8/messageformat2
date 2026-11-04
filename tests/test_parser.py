@@ -88,12 +88,15 @@ def test_parse_simple_message_escapes(request, snapshot, message):
 .local $numPigs = {$pigs :integer}
 {{On {$date} you had this many pigs: {$numPigs}}}""",
         """\
-.match {$count :integer}
+.input {$count :integer}
+.match $count
 0   {{You have no notifications.}}
 one {{You have {$count} notification.}}
 *   {{You have {$count} notifications.}}""",
         """\
-.match {$a :integer} {$b :integer}
+.input {$a :integer}
+.local $b = {$a :integer}
+.match $a $b
 * * {{a = {$a}, b = {$b}}}""",
     ],
     ids=itertools.count(1),
@@ -112,13 +115,15 @@ def test_parse_complex_message(request, snapshot, message):
     [
         (
             """\
-.match {$count :integer}
+.input {$count :integer}
+.match $count
 0 1 {{You have no notifications.}}""",
             VariantKeyMismatch,
         ),
         (
             """\
-.match {$count :integer}
+.input {$count :integer}
+.match $count
 0 {{You have no notifications.}}""",
             MissingFallbackVariant,
         ),
@@ -157,7 +162,21 @@ def test_parse_complex_message(request, snapshot, message):
         ),
         (
             """\
-.match {$count}
+.match $count
+* {{You have no notifications.}}""",
+            MissingSelectorAnnotation,
+        ),
+        (
+            """\
+.input {$count}
+.match $count
+* {{You have no notifications.}}""",
+            MissingSelectorAnnotation,
+        ),
+        (
+            """\
+.local $count = {|42|}
+.match $count
 * {{You have no notifications.}}""",
             MissingSelectorAnnotation,
         ),
@@ -165,7 +184,14 @@ def test_parse_complex_message(request, snapshot, message):
             """\
 .input {$count}
 .local $n = {$count}
-.match {$n}
+.match $n
+* {{You have no notifications.}}""",
+            MissingSelectorAnnotation,
+        ),
+        (
+            """\
+.local $n = {$count}
+.match $n
 * {{You have no notifications.}}""",
             MissingSelectorAnnotation,
         ),
@@ -187,9 +213,22 @@ def test_data_model_errors(message, error):
         "Unknown {{expression}}",
         ".local $var = {|no message body|}",
         ".local $var = invalid",
-        ".match {$count} {{Missing variants}}",
-        ".match {$count} *",
+        ".input {$count :integer} .match $count {{Missing variants}}",
+        ".input {$count :integer} .match $count *",
+        ".input {$count :integer} .match $count * {{foo}} extra",
         ".match {{$count}}",
+        # selectors must be variables
+        ".match {$count :integer} * {{foo}}",
+        ".input {$count :integer} .match {$count} * {{foo}}",
+        ".match * {{foo}}",
+        ".match x * {{foo}}",
+        ".match :x * {{foo}}",
+        # required whitespace between selectors and keys
+        ".input {$x :x} .match$x * {{foo}}",
+        ".input {$x :x} .match $x* {{foo}}",
+        ".input {$x :x} .match $x|x| {{foo}} * {{foo}}",
+        ".input {$x :x} .local $y = {y :y} .match $x$y * * {{foo}}",
+        ".input {$x :x} .local $y = {y :y} .match $x $y ** {{foo}}",
         "{:func @}",
         "{:func :func}",
         "{:func @2}",
@@ -268,7 +307,7 @@ def test_bidi_marks_are_not_allowed_inside_names(message):
         "{<tag}",
         # reserved statements were removed from the syntax
         ".unknown {$x} {{Reserved statement}}",
-        ".unknown reserved-body |literal| {$x} .match {$x :string} * {{}}",
+        ".unknown reserved-body |literal| {$x} .input {$x :string} .match $x * {{}}",
         ".i {1} {{}}",
         ".l $y = {|bar|} {{}}",
         # attribute values can only be literals

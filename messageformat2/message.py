@@ -25,7 +25,8 @@ def format_message(
         >>> message.format({"name": "Alice"})
         'Hello, Alice!'
         >>> message = Message('''\\
-        ... .match {$count :integer}
+        ... .input {$count :integer}
+        ... .match $count
         ... one {{You have one notification}}
         ... *   {{You have {$count} notifications}}''')
         >>> message.format({"count": 3}, "en")
@@ -81,7 +82,8 @@ class Message:
             >>> message.format({"name": "Alice"})
             'Hello, Alice!'
             >>> message = Message('''\\
-            ... .match {$count :integer}
+            ... .input {$count :integer}
+            ... .match $count
             ... one {{You have one notification}}
             ... *   {{You have {$count} notifications}}''')
             >>> message.format({"count": 3}, "en")

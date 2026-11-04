@@ -14,7 +14,8 @@ As a selector, this function simply selects the exact match among the variant ke
 
 ```python
 format_message("""\
-.match {$pet :string}
+.input {$pet :string}
+.match $pet
 dog {{I have a dog}}
 cat {{I have a cat}}
 * {{I have a {$pet}}}
