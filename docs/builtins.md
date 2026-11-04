@@ -28,7 +28,7 @@ cat {{I have a cat}}
 
 The operand must be an `int`, `float` or `Decimal` (but not a `bool`), or a string matching the
 `number-literal` production of the spec (e.g. `|-1234.5|`, `|1e3|`; `|01|` or `|.5|` are not numbers).
-The resolved value of another numeric function (`:number`, `:integer`) is also accepted, in which
+The resolved value of another numeric function (`:number`, `:integer`, `:offset`) is also accepted, in which
 case its options are inherited, with the options of the expression taking priority.
 
 #### Formatter
@@ -71,6 +71,23 @@ numeric keys (e.g. `1`), then (unless `select=exact`) matches the CLDR plural or
 
 Same as `:number`, but the operand is truncated to an integer. The `minimumFractionDigits`, `maximumFractionDigits`
 and `minimumSignificantDigits` options of an annotated operand are discarded.
+
+### `:offset`
+
+Adds or subtracts a small integer from a numeric operand, e.g. to count "other" users:
+
+```python
+.input {$likes :integer}
+.local $others = {$likes :offset subtract=1}
+```
+
+Exactly one of the options must be given:
+
+- `add`
+- `subtract`
+
+The formatting options of an annotated operand (e.g. `signDisplay` of `{$likes :integer signDisplay=always}`)
+are inherited. `:offset` can also be used as a selector, in which case it behaves like `:number`.
 
 ### `:datetime`
 

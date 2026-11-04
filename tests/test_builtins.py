@@ -30,9 +30,14 @@ from messageformat2.errors import BadOperand, BadOption, BadSelector, BadVariant
         ("{-4.7 :integer}", None, "en", "-4"),
         ("{|0.42e+1| :integer}", None, "en", "4"),
         ("{1234567 :integer}", None, "en", "1,234,567"),
+        ("{41 :offset add=1}", None, "en", "42"),
+        ("{52 :offset subtract=10}", None, "en", "42"),
+        ("{41 :offset add=1 foo=13}", None, "en", "42"),
         # the options of an annotated operand are inherited
         (".local $x = {1.25 :integer} {{{$x :number}}}", None, "en", "1"),
         (".local $x = {1.25 :number minimumFractionDigits=2} {{{$x :integer}}}", None, "en", "1"),
+        (".local $x = {41 :integer signDisplay=always} {{{$x :offset add=1}}}", None, "en", "+42"),
+        (".local $x = {52 :number signDisplay=always} {{{$x :offset subtract=10}}}", None, "en", "+42"),
         (
             ".input {$n :number minimumFractionDigits=2 signDisplay=always} {{{$n :number minimumFractionDigits=1}}}",
             {"n": 3},
@@ -66,6 +71,10 @@ def test_number_formatting(message, inputs, locale, formatted):
         ("{42 :number useGrouping=foo}", None, BadOption),
         ("{42 :number select=foo}", None, BadOption),
         ("{42 :number select=$s}", {"s": "exact"}, BadOption),
+        ("{42 :offset}", None, BadOption),
+        ("{42 :offset add=foo}", None, BadOption),
+        ("{42 :offset add=1 subtract=1}", None, BadOption),
+        ("{:offset add=1}", None, BadOperand),
     ],
 )
 def test_number_errors(message, inputs, error):
@@ -134,6 +143,11 @@ def test_integer_selection_truncates():
     message = ".input {$n :integer} .match $n 1 {{=1}} one {{one}} * {{other}}"
     assert Message(message).format({"n": 1.2}, "en") == "=1"
     assert Message(message).format({"n": 1.9}, "en") == "=1"
+
+
+def test_offset_selection():
+    message = ".local $x = {10 :integer} .local $y = {$x :offset subtract=6} .match $y 10 {{=10}} 4 {{=4}} * {{other}}"
+    assert Message(message).format(None, "en") == "=4"
 
 
 def test_select_option_must_be_a_literal_for_selection():

@@ -121,7 +121,7 @@ NUMBER_LITERAL = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][-+]?[0-9]
 """The `number-literal` production: the only strings accepted as numeric operands."""
 DIGIT_SIZE_OPTION = re.compile(r"^(?:0|[1-9][0-9]?)$")
 PLURAL_KEYWORDS = frozenset({"zero", "one", "two", "few", "many", "other"})
-NUMERIC_FUNCTIONS = frozenset({"number", "integer"})
+NUMERIC_FUNCTIONS = frozenset({"number", "integer", "offset"})
 SIGN_DISPLAY = frozenset({"auto", "always", "exceptZero", "negative", "never"})
 USE_GROUPING = frozenset({"auto", "always", "never", "min2"})
 SELECT = frozenset({"plural", "ordinal", "exact"})
@@ -223,7 +223,18 @@ def numeric_value(lazy: LazyValue) -> tuple[Decimal, ResolvedOptions]:
     number, options = numeric_operand(lazy.value, lazy.options, lazy.fn_name)
     if lazy.fn_name == "integer":
         number = number.to_integral_value(rounding=ROUND_DOWN)
+    elif lazy.fn_name == "offset":
+        number += offset_delta(lazy.options)
+        options = ResolvedOptions({k: v for k, v in options.items() if k not in ("add", "subtract")})
     return number, options
+
+
+def offset_delta(options: dict[str, Any]) -> Decimal:
+    add, subtract = digit_size_option(options, "add"), digit_size_option(options, "subtract")
+    if (add is None) == (subtract is None):
+        msg = "Bad option: :offset requires exactly one of the options 'add' and 'subtract'"
+        raise BadOption(msg)
+    return Decimal(add) if add is not None else -Decimal(subtract)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 
 
 def _integer_digits(number: Decimal) -> int:
@@ -340,6 +351,20 @@ def integer_selector(value: Any, locale: Locale, options: ResolvedOptions, keys:
     number, options = numeric_operand(value, options, "integer")
     number = number.to_integral_value(rounding=ROUND_DOWN)
     return select_numeric(number, locale, options, keys)
+
+
+def offset_formatter(value: Any, locale: Locale, options: ResolvedOptions) -> str:
+    number, options = numeric_operand(value, options, "offset")
+    number += offset_delta(options)
+    inherited = {k: v for k, v in options.items() if k not in ("add", "subtract")}
+    return format_numeric(number, locale, ResolvedOptions(inherited, literal=options.literal))
+
+
+def offset_selector(value: Any, locale: Locale, options: ResolvedOptions, keys: list[str]) -> list[str]:
+    number, options = numeric_operand(value, options, "offset")
+    number += offset_delta(options)
+    inherited = {k: v for k, v in options.items() if k not in ("add", "subtract")}
+    return select_numeric(number, locale, ResolvedOptions(inherited, literal=options.literal), keys)
 
 
 def format_datetime(  # noqa: PLR0913, PLR0915, PLR0917
@@ -509,6 +534,7 @@ default_registry = Registry(
         "string": string_formatter,
         "number": number_formatter,
         "integer": integer_formatter,
+        "offset": offset_formatter,
         "datetime": datetime_formatter,
         "date": date_formatter,
         "time": time_formatter,
@@ -517,6 +543,7 @@ default_registry = Registry(
         "string": string_selector,
         "number": number_selector,
         "integer": integer_selector,
+        "offset": offset_selector,
     },
 )
 """The default registry of formatters and selectors."""
