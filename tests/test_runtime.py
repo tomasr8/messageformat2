@@ -550,3 +550,8 @@ def test_declarations_are_resolved_once():
     # the unresolved variable is reported once, not once per reference
     assert [type(e) for e in errors] == [UnresolvedVariable]
     assert calls == []
+
+
+def test_bcp47_locale():
+    assert Message("{$n :number}").format({"n": 1234.5}, "de-DE") == "1.234,5"
+    assert Message("{$n :number}").format({"n": 1234.5}, "de_DE") == "1.234,5"

@@ -38,7 +38,8 @@ def format_message(  # noqa: PLR0913
 
     Args:
         msg: The message to format.
-        locale: The locale in which to format the message. Defaults to the system locale.
+        locale: The locale in which to format the message, as a `babel.Locale` or a string
+            such as `"en_US"` or `"en-US"`. Defaults to the system locale.
         inputs: Input variables referenced by the message.
         formatters: Additional formatters.
         selectors: Additional selectors.
@@ -116,7 +117,8 @@ class Message:
             'You have 3 notifications'
 
         Args:
-            locale: The locale in which to format the message. Defaults to the system locale.
+            locale: The locale in which to format the message, as a `babel.Locale` or a string
+                such as `"en_US"` or `"en-US"`. Defaults to the system locale.
             inputs: Input variables referenced by the message.
             formatters: Additional formatters.
             selectors: Additional selectors.
@@ -141,7 +143,7 @@ class Message:
         if locale is None:
             locale = Locale.default()
         elif not isinstance(locale, Locale):
-            locale = Locale.parse(locale)
+            locale = Locale.parse(locale.replace("-", "_"))
         if inputs is None:
             inputs = {}
         registry = (
