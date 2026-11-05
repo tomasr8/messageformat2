@@ -1,6 +1,6 @@
 
 
-# MessageFormat2 [![Documentation Status](https://readthedocs.org/projects/messageformat2/badge/?version=latest)](https://messageformat2.readthedocs.io/en/latest/?badge=latest) [![CI](https://github.com/tomasr8/messageformat2/workflows/CI/badge.svg)](https://github.com/tomasr8/messageformat2/workflows/CI/badge.svg)
+# MessageFormat2 [![Documentation Status](https://app.readthedocs.org/projects/messageformat2/badge/?version=stable)](https://messageformat2.readthedocs.io/en/latest/?badge=stable) [![CI](https://github.com/tomasr8/messageformat2/workflows/CI/badge.svg)](https://github.com/tomasr8/messageformat2/workflows/CI/badge.svg)
 
 This is a Python implementation of the [Unicode MessageFormat
 specification](https://www.unicode.org/reports/tr35/tr35-messageFormat.html) (LDML 49).
