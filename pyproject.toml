@@ -85,6 +85,9 @@ packages = ["messageformat2"]
 [tool.hatch.version]
 path = "messageformat2/__init__.py"
 
+[tool.uv]
+exclude-newer = "7 days"
+
 [build-system]
 requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
