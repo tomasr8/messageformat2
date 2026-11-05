@@ -3,14 +3,11 @@
 # MessageFormat2
 
 This is a Python implementation of the [Unicode MessageFormat
-specification](https://www.unicode.org/reports/tr35/tr35-messageFormat.html) (LDML 49).
+specification](https://messageformat.unicode.org/).
 
 Unicode MessageFormat (MessageFormat 2.0, MF2) is a new iteration of MessageFormat which aims to be
 more expressive and flexible than both MessageFormat 1.0 and, in the context of
 Python, gettext.
-
-If you would like to learn more about MF2 itself head over to the [Unicode technical
-specification](https://www.unicode.org/reports/tr35/tr35-messageFormat.html).
 
 ## Features
 
